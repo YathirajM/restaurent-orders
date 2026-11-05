@@ -129,8 +129,8 @@ export default function OrderTrackingPage({
 
   return (
     <div className="min-h-screen bg-background pb-16 text-foreground selection:bg-amber-500/20 selection:text-amber-600">
-      {/* Top Header */}
-      <header className="sticky top-0 z-40 border-b border-border/60 bg-background/80 backdrop-blur-md px-4 sm:px-6 py-3.5">
+      {/* Top Header (Screen Only) */}
+      <header className="sticky top-0 z-40 border-b border-border/60 bg-background/80 backdrop-blur-md px-4 sm:px-6 py-3.5 no-print">
         <div className="mx-auto flex max-w-3xl items-center justify-between">
           <Link
             href="/menu"
@@ -150,16 +150,40 @@ export default function OrderTrackingPage({
             className="flex items-center gap-1.5 rounded-xl bg-muted px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted/80 transition-colors no-print"
           >
             <Printer className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Receipt</span>
+            <span className="hidden sm:inline">Print Receipt</span>
           </button>
         </div>
       </header>
 
       <main className="mx-auto max-w-3xl px-4 sm:px-6 pt-6 space-y-6">
+        {/* Printable Official Tax Invoice Header (Print Only) */}
+        <div className="print-only text-center border-b-2 border-dashed border-neutral-300 pb-4 mb-4">
+          <h1 className="text-3xl font-black uppercase tracking-wider text-black">
+            The Urban Plate
+          </h1>
+          <p className="text-xs text-neutral-600 font-medium mt-0.5">
+            Fine-Casual Gastro Bistro • Dine-In Experience
+          </p>
+          <p className="text-[11px] text-neutral-500 mt-0.5">
+            100 Feet Road, Indiranagar, Bengaluru • Ph: +91 80 4912 3456
+          </p>
+          <p className="text-[11px] text-neutral-500">
+            GSTIN: 29AAECU1234F1Z8 • FSSAI Lic: 11223334000555
+          </p>
+          <div className="mt-3 pt-2 border-t border-dashed border-neutral-300 text-xs font-semibold text-neutral-800 flex justify-between px-2">
+            <span>Bill No: {order.orderNumber}</span>
+            <span>Date: {new Date(order.createdAt).toLocaleDateString()}</span>
+            <span>Table: {order.tableNumber}</span>
+          </div>
+        </div>
+
         {/* Order Header Card */}
         <div className="relative overflow-hidden rounded-3xl border border-border/80 bg-card p-6 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
+              <p className="font-display text-xs font-black uppercase tracking-wider text-amber-600 mb-1">
+                The Urban Plate
+              </p>
               <div className="flex items-center gap-2">
                 <span className="rounded-full bg-amber-500/10 px-2.5 py-0.5 text-xs font-extrabold text-amber-600 border border-amber-500/20">
                   {order.orderNumber}
@@ -176,8 +200,8 @@ export default function OrderTrackingPage({
               </p>
             </div>
 
-            {/* Estimated Prep Box */}
-            <div className="flex items-center gap-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 p-3 sm:p-4">
+            {/* Estimated Prep Box (Screen Only) */}
+            <div className="flex items-center gap-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 p-3 sm:p-4 no-print">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500 text-white">
                 <Clock className="h-5 w-5" />
               </div>
@@ -201,9 +225,9 @@ export default function OrderTrackingPage({
           )}
         </div>
 
-        {/* Live Progression Timeline */}
+        {/* Live Progression Timeline (Screen Only - Excluded on Print) */}
         {!isRejected && (
-          <div className="rounded-3xl border border-border/80 bg-card p-6 shadow-sm">
+          <div className="rounded-3xl border border-border/80 bg-card p-6 shadow-sm no-print">
             <h3 className="font-display text-base font-bold text-foreground mb-6">
               Live Preparation Stages
             </h3>
@@ -283,16 +307,25 @@ export default function OrderTrackingPage({
           <div className="divide-y divide-border/40 space-y-3">
             {order.items.map((item) => (
               <div key={item.id} className="pt-3 first:pt-0 flex items-start justify-between gap-3">
-                <div className="flex items-start gap-2.5">
-                  <span className="flex h-5 w-5 items-center justify-center rounded-md bg-muted text-xs font-bold text-foreground mt-0.5">
-                    {item.quantity}x
-                  </span>
+                <div className="flex items-start gap-3">
+                  {/* Dish Photo */}
+                  <div className="relative h-14 w-14 sm:h-16 sm:w-16 flex-shrink-0 overflow-hidden rounded-2xl bg-muted border border-border/60 shadow-xs">
+                    <img
+                      src={item.productImage || "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400&q=75"}
+                      alt={item.productName}
+                      className="h-full w-full object-cover"
+                    />
+                    <span className="absolute bottom-1 right-1 flex h-4 min-w-4 px-1 items-center justify-center rounded-md bg-black/80 backdrop-blur-xs text-[10px] font-black text-white">
+                      {item.quantity}x
+                    </span>
+                  </div>
+
                   <div>
                     <h4 className="text-xs sm:text-sm font-bold text-foreground">
                       {item.productName}
                     </h4>
                     {item.customization?.selectedVariant && (
-                      <p className="text-[11px] text-amber-600">
+                      <p className="text-[11px] text-amber-600 font-medium">
                         Size: {item.customization.selectedVariant.name}
                       </p>
                     )}

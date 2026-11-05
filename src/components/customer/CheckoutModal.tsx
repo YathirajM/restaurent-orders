@@ -182,6 +182,50 @@ export function CheckoutModal({ isOpen, onClose }: CheckoutModalProps) {
             </span>
           </div>
 
+          {/* Ordered Dishes Preview with Photos */}
+          <div className="rounded-2xl border border-border/70 bg-muted/20 p-3 space-y-2">
+            <div className="flex items-center justify-between text-xs font-bold text-foreground">
+              <span>Your Selection ({items.length} dishes)</span>
+              <span className="text-amber-600">{formatCurrency(pricing.totalAmount)}</span>
+            </div>
+
+            <div className="max-h-36 overflow-y-auto space-y-2 pr-1 no-scrollbar">
+              {items.map((item) => (
+                <div
+                  key={item.id}
+                  className="flex items-center gap-2.5 rounded-xl bg-card p-2 border border-border/50 shadow-2xs"
+                >
+                  <div className="relative h-12 w-12 flex-shrink-0 overflow-hidden rounded-lg bg-muted">
+                    <img
+                      src={item.product.image || "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400&q=75"}
+                      alt={item.product.name}
+                      className="h-full w-full object-cover"
+                    />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-1">
+                      <p className="text-xs font-bold text-foreground truncate">
+                        {item.product.name}
+                      </p>
+                      <span className="text-xs font-bold text-foreground">
+                        {formatCurrency(item.totalPrice)}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                      <span className="font-semibold text-amber-600">{item.quantity}x</span>
+                      {item.customization.selectedVariant && (
+                        <span>• {item.customization.selectedVariant.name}</span>
+                      )}
+                      {item.customization.selectedAddons && item.customization.selectedAddons.length > 0 && (
+                        <span className="truncate">• +{item.customization.selectedAddons.length} add-ons</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
           {/* Customer Name & Phone */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
