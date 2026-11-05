@@ -147,36 +147,148 @@ export default function OrderTrackingPage({
 
           <button
             onClick={() => window.print()}
-            className="flex items-center gap-1.5 rounded-xl bg-muted px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted/80 transition-colors no-print"
+            className="flex items-center gap-1.5 rounded-xl bg-amber-500 px-3.5 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-amber-600 transition-colors"
           >
             <Printer className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Print Receipt</span>
+            <span>Print Tax Invoice</span>
           </button>
         </div>
       </header>
 
-      <main className="mx-auto max-w-3xl px-4 sm:px-6 pt-6 space-y-6">
-        {/* Printable Official Tax Invoice Header (Print Only) */}
-        <div className="print-only text-center border-b-2 border-dashed border-neutral-300 pb-4 mb-4">
-          <h1 className="text-3xl font-black uppercase tracking-wider text-black">
+      {/* ─────────────────────────────────────────────────────────────
+          1. DEDICATED RESTAURANT TAX INVOICE (PRINT ONLY)
+          Appears exclusively on paper/PDF print - NO prep stages,
+          authentic restaurant bill styling with company name & subtotal
+          ───────────────────────────────────────────────────────────── */}
+      <div className="print-only mx-auto max-w-md p-6 font-mono text-black text-xs leading-relaxed">
+        {/* Company Header */}
+        <div className="text-center pb-3 border-b-2 border-dashed border-black space-y-0.5">
+          <h1 className="text-2xl font-black uppercase tracking-wider text-black">
             The Urban Plate
           </h1>
-          <p className="text-xs text-neutral-600 font-medium mt-0.5">
+          <p className="text-[11px] font-semibold text-neutral-800">
             Fine-Casual Gastro Bistro • Dine-In Experience
           </p>
-          <p className="text-[11px] text-neutral-500 mt-0.5">
-            100 Feet Road, Indiranagar, Bengaluru • Ph: +91 80 4912 3456
+          <p className="text-[10px] text-neutral-600">
+            100 Feet Road, Indiranagar, Bengaluru - 560038
           </p>
-          <p className="text-[11px] text-neutral-500">
-            GSTIN: 29AAECU1234F1Z8 • FSSAI Lic: 11223334000555
+          <p className="text-[10px] text-neutral-600">
+            Ph: +91 80 4912 3456 • GSTIN: 29AAECU1234F1Z8
           </p>
-          <div className="mt-3 pt-2 border-t border-dashed border-neutral-300 text-xs font-semibold text-neutral-800 flex justify-between px-2">
-            <span>Bill No: {order.orderNumber}</span>
-            <span>Date: {new Date(order.createdAt).toLocaleDateString()}</span>
-            <span>Table: {order.tableNumber}</span>
+          <p className="text-[10px] text-neutral-600">
+            FSSAI Central Lic: 11223334000555
+          </p>
+        </div>
+
+        {/* Invoice Meta */}
+        <div className="py-2.5 border-b border-dashed border-neutral-400 space-y-1 text-[11px]">
+          <div className="text-center font-bold uppercase tracking-wider text-xs">
+            *** TAX INVOICE / DINE-IN BILL ***
+          </div>
+          <div className="flex justify-between pt-1">
+            <span>Bill No: <strong>{order.orderNumber}</strong></span>
+            <span>Date: {new Date(order.createdAt).toLocaleDateString()} {formatTime(order.createdAt)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span>Table: <strong>Table {order.tableNumber}</strong></span>
+            <span>Guest: <strong>{order.customerName}</strong></span>
+          </div>
+          <div className="flex justify-between">
+            <span>Payment Mode: <strong>{order.paymentMethod === "razorpay" ? "Online (UPI/Cards)" : "Pay at Counter"}</strong></span>
+            <span>Status: <strong className="uppercase">{order.paymentStatus}</strong></span>
           </div>
         </div>
 
+        {/* Itemized Order Table */}
+        <div className="py-3 border-b border-dashed border-neutral-400">
+          <div className="grid grid-cols-12 font-bold border-b border-neutral-300 pb-1 mb-2 text-[10px] uppercase">
+            <span className="col-span-6">Item Description</span>
+            <span className="col-span-2 text-center">Qty</span>
+            <span className="col-span-2 text-right">Rate</span>
+            <span className="col-span-2 text-right">Amount</span>
+          </div>
+
+          <div className="space-y-2">
+            {order.items.map((item) => (
+              <div key={item.id} className="text-[11px]">
+                <div className="grid grid-cols-12 items-start">
+                  <div className="col-span-6 pr-1 font-semibold">
+                    {item.productName}
+                    {item.customization?.selectedVariant && (
+                      <p className="text-[9px] text-neutral-600 font-normal">
+                        Size: {item.customization.selectedVariant.name}
+                      </p>
+                    )}
+                    {item.customization?.selectedAddons && item.customization.selectedAddons.length > 0 && (
+                      <p className="text-[9px] text-neutral-600 font-normal">
+                        Add: {item.customization.selectedAddons.map((a) => a.name).join(", ")}
+                      </p>
+                    )}
+                  </div>
+                  <span className="col-span-2 text-center">{item.quantity}</span>
+                  <span className="col-span-2 text-right">{formatCurrency(item.unitPrice)}</span>
+                  <span className="col-span-2 text-right font-bold">{formatCurrency(item.subtotal)}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Subtotal & Financial Breakdown */}
+        <div className="py-2.5 border-b-2 border-dashed border-black space-y-1 text-[11px]">
+          <div className="flex justify-between">
+            <span>Subtotal:</span>
+            <span>{formatCurrency(order.subtotal)}</span>
+          </div>
+
+          {order.discountAmount > 0 && (
+            <div className="flex justify-between text-neutral-700">
+              <span>Coupon Discount ({order.couponCode}):</span>
+              <span>-{formatCurrency(order.discountAmount)}</span>
+            </div>
+          )}
+
+          <div className="flex justify-between font-semibold pt-0.5">
+            <span>Taxable Amount:</span>
+            <span>{formatCurrency(order.subtotal - order.discountAmount)}</span>
+          </div>
+
+          <div className="flex justify-between text-neutral-600">
+            <span>CGST (2.5%):</span>
+            <span>{formatCurrency(Math.round(order.taxAmount / 2))}</span>
+          </div>
+
+          <div className="flex justify-between text-neutral-600">
+            <span>SGST (2.5%):</span>
+            <span>{formatCurrency(Math.round(order.taxAmount / 2))}</span>
+          </div>
+
+          {order.serviceChargeAmount > 0 && (
+            <div className="flex justify-between text-neutral-600">
+              <span>Service Charge (5%):</span>
+              <span>{formatCurrency(order.serviceChargeAmount)}</span>
+            </div>
+          )}
+
+          <div className="flex justify-between pt-2 border-t border-dashed border-neutral-400 font-black text-sm">
+            <span>NET TOTAL PAYABLE:</span>
+            <span>{formatCurrency(order.totalAmount)}</span>
+          </div>
+        </div>
+
+        {/* Footer Note */}
+        <div className="pt-3 text-center text-[10px] space-y-1">
+          <p className="font-bold">Thank you for dining at The Urban Plate!</p>
+          <p className="text-neutral-600">Please visit us again • Have a wonderful day!</p>
+          <p className="text-[9px] text-neutral-400">Generated by Restaurant POS • GST Invoice</p>
+        </div>
+      </div>
+
+      {/* ─────────────────────────────────────────────────────────────
+          2. INTERACTIVE SCREEN UI (SCREEN ONLY - HIDDEN ON PRINT)
+          Live stage progression, visual dish photos, elapsed timer
+          ───────────────────────────────────────────────────────────── */}
+      <main className="no-print mx-auto max-w-3xl px-4 sm:px-6 pt-6 space-y-6">
         {/* Order Header Card */}
         <div className="relative overflow-hidden rounded-3xl border border-border/80 bg-card p-6 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-4">
@@ -200,8 +312,8 @@ export default function OrderTrackingPage({
               </p>
             </div>
 
-            {/* Estimated Prep Box (Screen Only) */}
-            <div className="flex items-center gap-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 p-3 sm:p-4 no-print">
+            {/* Estimated Prep Box */}
+            <div className="flex items-center gap-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 p-3 sm:p-4">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500 text-white">
                 <Clock className="h-5 w-5" />
               </div>
@@ -225,9 +337,9 @@ export default function OrderTrackingPage({
           )}
         </div>
 
-        {/* Live Progression Timeline (Screen Only - Excluded on Print) */}
+        {/* Live Progression Timeline (Screen Only) */}
         {!isRejected && (
-          <div className="rounded-3xl border border-border/80 bg-card p-6 shadow-sm no-print">
+          <div className="rounded-3xl border border-border/80 bg-card p-6 shadow-sm">
             <h3 className="font-display text-base font-bold text-foreground mb-6">
               Live Preparation Stages
             </h3>
@@ -287,7 +399,7 @@ export default function OrderTrackingPage({
           </div>
         )}
 
-        {/* Ordered Dishes Summary */}
+        {/* Ordered Dishes Summary with Photos */}
         <div className="rounded-3xl border border-border/80 bg-card p-6 shadow-sm space-y-4">
           <div className="flex items-center justify-between border-b border-border/60 pb-3">
             <h3 className="font-display text-base font-bold text-foreground">
@@ -388,7 +500,7 @@ export default function OrderTrackingPage({
         </div>
 
         {/* Add more dishes / Table Actions */}
-        <div className="flex flex-col sm:flex-row gap-3 no-print">
+        <div className="flex flex-col sm:flex-row gap-3">
           <Link
             href={`/menu?table=${order.tableNumber}`}
             className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-amber-500 py-3.5 text-xs sm:text-sm font-bold text-white shadow-md shadow-amber-500/25 hover:bg-amber-600 transition-all"
@@ -410,7 +522,7 @@ export default function OrderTrackingPage({
         <div className="rounded-2xl border border-border/60 bg-muted/40 p-4 text-center text-xs text-muted-foreground">
           <p>Need anything else? Simply let your table captain know.</p>
           <p className="mt-0.5 text-[11px] text-neutral-400">
-            The Urban Plate • 42 MG Road, Connaught Place • GSTIN: 07AABCT1234C1ZP
+            The Urban Plate • 100 Feet Road, Indiranagar, Bengaluru • GSTIN: 29AAECU1234F1Z8
           </p>
         </div>
       </main>
