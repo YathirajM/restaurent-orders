@@ -399,7 +399,16 @@ function KDSTicketCard({
             key={idx}
             className="flex items-start justify-between gap-2 border-b border-neutral-800/60 pb-2 last:border-0 last:pb-0"
           >
-            <div className="flex items-start gap-2">
+            <div className="flex items-start gap-2.5">
+              {item.productImage && (
+                <div className="relative h-10 w-10 flex-shrink-0 overflow-hidden rounded-lg bg-neutral-800 border border-neutral-700/80 shadow-xs">
+                  <img
+                    src={item.productImage}
+                    alt={item.productName}
+                    className="h-full w-full object-cover"
+                  />
+                </div>
+              )}
               <span className="flex h-5 min-w-5 items-center justify-center rounded-md bg-neutral-800 text-amber-400 font-black text-xs">
                 {item.quantity}
               </span>

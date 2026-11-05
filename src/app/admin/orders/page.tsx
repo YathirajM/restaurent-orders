@@ -232,21 +232,30 @@ export default function AdminOrdersPage() {
                       </span>
                     </div>
 
-                    {/* Items chips */}
-                    <div className="mt-2 flex flex-wrap gap-1.5">
+                    {/* Items chips with dish photos */}
+                    <div className="mt-2.5 flex flex-wrap gap-2">
                       {order.items.map((item, idx) => (
-                        <span
+                        <div
                           key={idx}
-                          className="rounded-lg bg-muted px-2 py-0.5 text-xs font-medium text-foreground border border-border/40"
+                          className="flex items-center gap-1.5 rounded-xl bg-muted/80 pl-1.5 pr-2.5 py-1 text-xs font-medium text-foreground border border-border/50 shadow-2xs"
                         >
-                          <strong className="text-amber-600">{item.quantity}x</strong>{" "}
-                          {item.productName}
-                          {item.customization?.selectedVariant && (
-                            <span className="text-muted-foreground text-[10px] ml-1">
-                              ({item.customization.selectedVariant.name})
-                            </span>
+                          {item.productImage && (
+                            <img
+                              src={item.productImage}
+                              alt={item.productName}
+                              className="h-6 w-6 rounded-md object-cover flex-shrink-0 border border-border/40"
+                            />
                           )}
-                        </span>
+                          <div>
+                            <strong className="text-amber-600 font-bold">{item.quantity}x</strong>{" "}
+                            <span className="font-semibold">{item.productName}</span>
+                            {item.customization?.selectedVariant && (
+                              <span className="text-muted-foreground text-[10px] ml-1">
+                                ({item.customization.selectedVariant.name})
+                              </span>
+                            )}
+                          </div>
+                        </div>
                       ))}
                     </div>
 
