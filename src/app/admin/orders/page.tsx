@@ -82,20 +82,40 @@ export default function AdminOrdersPage() {
     reason?: string
   ) => {
     try {
-      const res = await fetch(`/api/orders/${orderId}`, {
+      // Try with order ID first
+      let res = await fetch(`/api/orders/${orderId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status, rejectionReason: reason }),
       });
+
+      // If order not found, search by order number
+      if (!res.ok) {
+        const allRes = await fetch("/api/orders");
+        const allData = await allRes.json();
+        if (allData.success && allData.data) {
+          const order = allData.data.find((o: Order) => o.orderNumber === orderId || o.id === orderId);
+          if (order) {
+            res = await fetch(`/api/orders/${order.id}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ status, rejectionReason: reason }),
+            });
+          }
+        }
+      }
+
       const data = await res.json();
       if (data.success && data.data) {
-        setOrders((prev) => prev.map((o) => (o.id === orderId ? data.data : o)));
+        setOrders((prev) => prev.map((o) => (o.id === data.data.id ? data.data : o)));
         realtime.emit("ORDER_STATUS_UPDATED", data.data);
         playStatusUpdateSound();
         if (rejectOrderId) {
           setRejectOrderId(null);
           setRejectReason("");
         }
+      } else {
+        console.error("Failed to update order:", data.error);
       }
     } catch (err) {
       console.error("Status update error", err);

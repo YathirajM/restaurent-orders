@@ -172,24 +172,21 @@ function MenuContent() {
           </div>
         </div>
 
-        {/* Product Grid */}
+        {/* Product Grid - Clean like reference app */}
         {isLoading ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 sm:gap-4">
             {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
-              <div
-                key={n}
-                className="h-72 rounded-3xl bg-muted/40 animate-pulse border border-border/40"
-              />
+              <div key={n} className="aspect-square rounded-2xl bg-gray-100 animate-pulse" />
             ))}
           </div>
         ) : filteredProducts.length === 0 ? (
-          <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-border p-12 text-center bg-card">
-            <Utensils className="h-12 w-12 text-muted-foreground/50 mb-3" />
-            <h3 className="font-display text-base font-bold text-foreground">
+          <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-gray-200 p-12 text-center bg-white">
+            <Utensils className="h-12 w-12 text-gray-300 mb-3" />
+            <h3 className="font-bold text-gray-700">
               No matching dishes found
             </h3>
-            <p className="mt-1 text-xs text-muted-foreground max-w-sm">
-              Try adjusting your dietary filters or search query to find dishes that delight your tastebuds.
+            <p className="mt-1 text-sm text-gray-400 max-w-sm">
+              Try adjusting your filters or search query
             </p>
             <button
               onClick={() => {
@@ -199,13 +196,13 @@ function MenuContent() {
                 setOnlyBestsellers(false);
                 setOnlyChefSpecial(false);
               }}
-              className="mt-4 rounded-xl bg-amber-500/10 px-4 py-2 text-xs font-bold text-amber-600 hover:bg-amber-500/20 transition-colors"
+              className="mt-4 rounded-xl bg-amber-500 px-4 py-2 text-sm font-bold text-white hover:bg-amber-600 transition-colors"
             >
-              Reset All Filters
+              Reset Filters
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 sm:gap-4">
             {filteredProducts.map((product) => (
               <ProductCard
                 key={product.id}
