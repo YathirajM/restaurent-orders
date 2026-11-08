@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect, useState, useMemo, useCallback } from "react";
 import { CartCustomization, CartItem, Coupon, Product } from "@/lib/types";
 import { calculateOrderPricing, PricingBreakdown } from "@/lib/utils";
 
@@ -31,36 +31,31 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   // Load from localStorage on client mount
   useEffect(() => {
+    let mounted = true;
     try {
       const savedItems = localStorage.getItem("urban_plate_cart");
-      if (savedItems) {
+      if (savedItems && mounted) {
         setItems(JSON.parse(savedItems));
       }
       const savedTable = localStorage.getItem("urban_plate_table");
       const savedToken = localStorage.getItem("urban_plate_token");
-      if (savedTable) setTableNumber(savedTable);
-      if (savedToken) setTableToken(savedToken);
+      if (savedTable && mounted) setTableNumber(savedTable);
+      if (savedToken && mounted) setTableToken(savedToken);
 
       const savedCoupon = localStorage.getItem("urban_plate_coupon");
-      if (savedCoupon) setCoupon(JSON.parse(savedCoupon));
+      if (savedCoupon && mounted) setCoupon(JSON.parse(savedCoupon));
     } catch (e) {
       console.warn("Could not load cart from storage", e);
     }
-    setIsInitialized(true);
+    if (mounted) setIsInitialized(true);
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
-  // Save to localStorage whenever items change
-  useEffect(() => {
-    if (!isInitialized) return;
-    try {
-      localStorage.setItem("urban_plate_cart", JSON.stringify(items));
-    } catch (e) {
-      console.warn("Could not save cart to storage", e);
-    }
-  }, [items, isInitialized]);
-
-  // Save table session
-  const setTableSession = (tbl: string, token: string) => {
+  // Save table session - memoized
+  const setTableSession = useCallback((tbl: string, token: string) => {
     setTableNumber(tbl);
     setTableToken(token);
     try {
@@ -69,56 +64,59 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     } catch (e) {
       console.warn("Storage error", e);
     }
-  };
+  }, []);
 
-  const addItem = (
-    product: Product,
-    quantity = 1,
-    customization: CartCustomization = { selectedAddons: [] }
-  ) => {
-    // Calculate unit price based on variant and add-ons
-    let unitPrice = product.price;
-    if (customization.selectedVariant) {
-      unitPrice = customization.selectedVariant.price;
-    }
-    if (customization.selectedAddons && customization.selectedAddons.length > 0) {
-      unitPrice += customization.selectedAddons.reduce((s, a) => s + a.price, 0);
-    }
-
-    // Generate unique ID that distinguishes items with different customizations
-    const customizationKey = `${customization.selectedVariant?.id || ""}_${(customization.selectedAddons || [])
-      .map((a) => a.id)
-      .sort()
-      .join("_")}_${customization.spiceLevel ?? ""}_${customization.specialInstructions || ""}`;
-    const cartItemId = `${product.id}__${customizationKey}`;
-
-    setItems((prev) => {
-      const existingIdx = prev.findIndex((i) => i.id === cartItemId);
-      if (existingIdx > -1) {
-        const next = [...prev];
-        const newQty = next[existingIdx].quantity + quantity;
-        next[existingIdx] = {
-          ...next[existingIdx],
-          quantity: newQty,
-          totalPrice: newQty * unitPrice,
-        };
-        return next;
-      } else {
-        const newItem: CartItem = {
-          id: cartItemId,
-          productId: product.id,
-          product,
-          quantity,
-          customization,
-          itemUnitPrice: unitPrice,
-          totalPrice: quantity * unitPrice,
-        };
-        return [...prev, newItem];
+  // Add item - memoized
+  const addItem = useCallback(
+    (
+      product: Product,
+      quantity = 1,
+      customization: CartCustomization = { selectedAddons: [] }
+    ) => {
+      let unitPrice = product.price;
+      if (customization.selectedVariant) {
+        unitPrice = customization.selectedVariant.price;
       }
-    });
-  };
+      if (customization.selectedAddons && customization.selectedAddons.length > 0) {
+        unitPrice += customization.selectedAddons.reduce((s, a) => s + a.price, 0);
+      }
 
-  const updateQuantity = (cartItemId: string, delta: number) => {
+      const customizationKey = `${customization.selectedVariant?.id || ""}_${(customization.selectedAddons || [])
+        .map((a) => a.id)
+        .sort()
+        .join("_")}_${customization.spiceLevel ?? ""}_${customization.specialInstructions || ""}`;
+      const cartItemId = `${product.id}__${customizationKey}`;
+
+      setItems((prev) => {
+        const existingIdx = prev.findIndex((i) => i.id === cartItemId);
+        if (existingIdx > -1) {
+          const next = [...prev];
+          const newQty = next[existingIdx].quantity + quantity;
+          next[existingIdx] = {
+            ...next[existingIdx],
+            quantity: newQty,
+            totalPrice: newQty * unitPrice,
+          };
+          return next;
+        } else {
+          const newItem: CartItem = {
+            id: cartItemId,
+            productId: product.id,
+            product,
+            quantity,
+            customization,
+            itemUnitPrice: unitPrice,
+            totalPrice: quantity * unitPrice,
+          };
+          return [...prev, newItem];
+        }
+      });
+    },
+    []
+  );
+
+  // Update quantity - memoized
+  const updateQuantity = useCallback((cartItemId: string, delta: number) => {
     setItems((prev) => {
       return prev
         .map((item) => {
@@ -135,13 +133,15 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         })
         .filter(Boolean) as CartItem[];
     });
-  };
+  }, []);
 
-  const removeItem = (cartItemId: string) => {
+  // Remove item - memoized
+  const removeItem = useCallback((cartItemId: string) => {
     setItems((prev) => prev.filter((i) => i.id !== cartItemId));
-  };
+  }, []);
 
-  const clearCart = () => {
+  // Clear cart - memoized
+  const clearCart = useCallback(() => {
     setItems([]);
     setCoupon(null);
     try {
@@ -150,44 +150,78 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     } catch (e) {
       console.warn("Storage error", e);
     }
-  };
+  }, []);
 
-  const applyCoupon = async (code: string) => {
-    const subtotal = items.reduce((s, i) => s + i.totalPrice, 0);
-    try {
-      const res = await fetch("/api/coupons", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code, subtotal }),
-      });
-      const data = await res.json();
-      if (data.success && data.data?.coupon) {
-        setCoupon(data.data.coupon);
-        localStorage.setItem("urban_plate_coupon", JSON.stringify(data.data.coupon));
-        return { success: true, message: `Coupon applied: -₹${data.data.discount}` };
-      } else {
-        return { success: false, message: data.error || "Invalid coupon" };
+  // Apply coupon - memoized
+  const applyCoupon = useCallback(
+    async (code: string) => {
+      const subtotal = items.reduce((s, i) => s + i.totalPrice, 0);
+      try {
+        const res = await fetch("/api/coupons", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code, subtotal }),
+        });
+        const data = await res.json();
+        if (data.success && data.data?.coupon) {
+          setCoupon(data.data.coupon);
+          localStorage.setItem("urban_plate_coupon", JSON.stringify(data.data.coupon));
+          return { success: true, message: `Coupon applied: -₹${data.data.discount}` };
+        } else {
+          return { success: false, message: data.error || "Invalid coupon" };
+        }
+      } catch {
+        return { success: false, message: "Network error validating coupon" };
       }
-    } catch {
-      return { success: false, message: "Network error validating coupon" };
-    }
-  };
+    },
+    [items]
+  );
 
-  const removeCoupon = () => {
+  // Remove coupon - memoized
+  const removeCoupon = useCallback(() => {
     setCoupon(null);
     try {
       localStorage.removeItem("urban_plate_coupon");
     } catch (e) {
       console.warn("Storage error", e);
     }
-  };
+  }, []);
 
-  const pricing = calculateOrderPricing(
-    items.map((i) => ({ unitPrice: i.itemUnitPrice, quantity: i.quantity })),
-    coupon
+  // Memoized pricing calculation
+  const pricing = useMemo(
+    () =>
+      calculateOrderPricing(
+        items.map((i) => ({ unitPrice: i.itemUnitPrice, quantity: i.quantity })),
+        coupon
+      ),
+    [items, coupon]
   );
 
-  const itemCount = items.reduce((sum, item) => sum + item.quantity, 0);
+  // Memoized item count
+  const itemCount = useMemo(
+    () => items.reduce((sum, item) => sum + item.quantity, 0),
+    [items]
+  );
+
+  // Save to localStorage whenever items change
+  useEffect(() => {
+    if (!isInitialized) return;
+    try {
+      localStorage.setItem("urban_plate_cart", JSON.stringify(items));
+    } catch (e) {
+      console.warn("Could not save cart to storage", e);
+    }
+  }, [items, isInitialized]);
+
+  // Save coupon to localStorage
+  useEffect(() => {
+    if (!isInitialized || !coupon) return;
+    try {
+      localStorage.setItem("urban_plate_coupon", JSON.stringify(coupon));
+    } catch (e) {
+      console.warn("Could not save coupon to storage", e);
+    }
+  }, [coupon, isInitialized]);
 
   return (
     <CartContext.Provider

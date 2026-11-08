@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { memo, useMemo } from "react";
 import Image from "next/image";
 import { Product } from "@/lib/types";
 import { formatCurrency } from "@/lib/utils";
@@ -12,22 +12,35 @@ interface ProductCardProps {
   onOpenDetail: (product: Product) => void;
 }
 
-export function ProductCard({ product, onOpenDetail }: ProductCardProps) {
+// Memoized ProductCard to prevent unnecessary re-renders
+export const ProductCard = memo(function ProductCard({
+  product,
+  onOpenDetail,
+}: ProductCardProps) {
   const { addItem, items } = useCart();
 
-  const hasCustomizations =
-    (product.variants && product.variants.length > 0) ||
-    (product.addons && product.addons.length > 0) ||
-    product.spiceLevel > 0;
+  const hasCustomizations = useMemo(
+    () =>
+      (product.variants && product.variants.length > 0) ||
+      (product.addons && product.addons.length > 0) ||
+      product.spiceLevel > 0,
+    [product.variants, product.addons, product.spiceLevel]
+  );
 
-  // Check how many of this product are in cart
-  const cartQuantity = items
-    .filter((i) => i.productId === product.id)
-    .reduce((sum, i) => sum + i.quantity, 0);
+  // Memoize cart quantity calculation
+  const cartQuantity = useMemo(
+    () =>
+      items
+        .filter((i) => i.productId === product.id)
+        .reduce((sum, i) => sum + i.quantity, 0),
+    [items, product.id]
+  );
+
+  const isAvailable = product.isAvailable;
 
   const handleAddClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!product.isAvailable) return;
+    if (!isAvailable) return;
 
     if (hasCustomizations) {
       onOpenDetail(product);
@@ -36,11 +49,14 @@ export function ProductCard({ product, onOpenDetail }: ProductCardProps) {
     }
   };
 
+  // Pre-calculate image sizes for better performance
+  const imageSizes = "(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw";
+
   return (
     <div
       onClick={() => onOpenDetail(product)}
       className={`group relative flex flex-col overflow-hidden rounded-2xl bg-white shadow-md transition-all duration-300 hover:shadow-xl hover:-translate-y-1 cursor-pointer ${
-        !product.isAvailable ? "opacity-60 grayscale-[40%]" : ""
+        !isAvailable ? "opacity-60 grayscale-[40%]" : ""
       }`}
     >
       {/* Product Image */}
@@ -49,8 +65,10 @@ export function ProductCard({ product, onOpenDetail }: ProductCardProps) {
           src={product.image}
           alt={product.name}
           fill
-          sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+          sizes={imageSizes}
           className="object-cover transition-transform duration-500 group-hover:scale-108"
+          loading="lazy"
+          decoding="async"
         />
 
         {/* Veg/Non-Veg Badge */}
@@ -76,7 +94,7 @@ export function ProductCard({ product, onOpenDetail }: ProductCardProps) {
         )}
 
         {/* Sold Out Overlay */}
-        {!product.isAvailable && (
+        {!isAvailable && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/50">
             <span className="rounded-lg bg-red-600 px-3 py-1 text-xs font-bold text-white uppercase">
               Sold Out
@@ -85,7 +103,7 @@ export function ProductCard({ product, onOpenDetail }: ProductCardProps) {
         )}
       </div>
 
-      {/* Product Info - Clean like reference */}
+      {/* Product Info */}
       <div className="flex flex-col p-3">
         <h3 className="font-semibold text-gray-800 text-sm leading-tight line-clamp-2">
           {product.name}
@@ -104,15 +122,15 @@ export function ProductCard({ product, onOpenDetail }: ProductCardProps) {
             )}
           </div>
 
-          {/* ADD Button - Clean and prominent */}
+          {/* ADD Button */}
           <button
             onClick={handleAddClick}
-            disabled={!product.isAvailable}
+            disabled={!isAvailable}
             className={`flex items-center justify-center rounded-lg px-4 py-1.5 text-xs font-bold transition-all active:scale-95 ${
               cartQuantity > 0
                 ? "bg-emerald-500 text-white"
                 : "bg-amber-500 text-white hover:bg-amber-600"
-            } ${!product.isAvailable ? "bg-gray-300 cursor-not-allowed" : ""}`}
+            } ${!isAvailable ? "bg-gray-300 cursor-not-allowed" : ""}`}
           >
             {cartQuantity > 0 ? (
               <span className="flex items-center gap-1">
@@ -128,4 +146,4 @@ export function ProductCard({ product, onOpenDetail }: ProductCardProps) {
       </div>
     </div>
   );
-}
+});

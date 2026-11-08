@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState, useEffect, Suspense } from "react";
+import React, { useState, useEffect, Suspense, useMemo, useCallback } from "react";
+import dynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
 import { useCart } from "@/context/CartContext";
 import { Category, Product, RestaurantSettings } from "@/lib/types";
@@ -13,7 +14,23 @@ import { CartDrawer } from "@/components/customer/CartDrawer";
 import { CheckoutModal } from "@/components/customer/CheckoutModal";
 import { realtime } from "@/lib/realtime";
 import { generateTableToken } from "@/lib/qr";
-import { Sparkles, Utensils, AlertCircle } from "lucide-react";
+import { Sparkles, Utensils } from "lucide-react";
+
+// Dynamic imports for better code splitting
+const DynamicProductModal = dynamic(
+  () => import("@/components/customer/ProductModal").then((mod) => mod.ProductModal),
+  { ssr: false }
+);
+
+const DynamicCartDrawer = dynamic(
+  () => import("@/components/customer/CartDrawer").then((mod) => mod.CartDrawer),
+  { ssr: false }
+);
+
+const DynamicCheckoutModal = dynamic(
+  () => import("@/components/customer/CheckoutModal").then((mod) => mod.CheckoutModal),
+  { ssr: false }
+);
 
 function MenuContent() {
   const searchParams = useSearchParams();
@@ -36,7 +53,7 @@ function MenuContent() {
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
 
-  // Handle table URL parameters (e.g. ?table=04&token=...)
+  // Handle table URL parameters
   useEffect(() => {
     const tableParam = searchParams.get("table");
     const tokenParam = searchParams.get("token");
@@ -45,13 +62,14 @@ function MenuContent() {
       const validToken = tokenParam || generateTableToken(tableParam);
       setTableSession(tableParam, validToken);
     } else if (!tableNumber) {
-      // Default to Table 04 for initial demo exploration
       setTableSession("04", generateTableToken("04"));
     }
   }, [searchParams, tableNumber, setTableSession]);
 
   // Fetch initial restaurant, categories, and products
   useEffect(() => {
+    let mounted = true;
+
     async function loadData() {
       try {
         const [restRes, catRes, prodRes] = await Promise.all([
@@ -59,6 +77,9 @@ function MenuContent() {
           fetch("/api/categories"),
           fetch("/api/products"),
         ]);
+
+        if (!mounted) return;
+
         const restData = await restRes.json();
         const catData = await catRes.json();
         const prodData = await prodRes.json();
@@ -69,13 +90,18 @@ function MenuContent() {
       } catch (err) {
         console.error("Failed to load restaurant data", err);
       } finally {
-        setIsLoading(false);
+        if (mounted) setIsLoading(false);
       }
     }
+
     loadData();
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
-  // Listen for real-time product updates (e.g. out of stock / stock back)
+  // Listen for real-time product updates
   useEffect(() => {
     const unsubProduct = realtime.subscribe(
       "PRODUCT_AVAILABILITY_CHANGED",
@@ -98,35 +124,63 @@ function MenuContent() {
     };
   }, []);
 
-  // Filter products based on active filters & search query
-  const filteredProducts = products.filter((p) => {
-    // Category filter
-    if (selectedCategory !== "all" && p.categoryId !== selectedCategory) {
-      return false;
-    }
-    // Search query filter
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      const matchName = p.name.toLowerCase().includes(q);
-      const matchDesc = p.description.toLowerCase().includes(q);
-      const matchCat = p.categoryName?.toLowerCase().includes(q);
-      const matchIngredients = p.ingredients?.some((ing) =>
-        ing.toLowerCase().includes(q)
-      );
-      if (!matchName && !matchDesc && !matchCat && !matchIngredients) {
+  // Memoized filtered products to avoid recalculation on every render
+  const filteredProducts = useMemo(() => {
+    return products.filter((p) => {
+      // Category filter
+      if (selectedCategory !== "all" && p.categoryId !== selectedCategory) {
         return false;
       }
-    }
-    // Veg/Non-Veg filter
-    if (vegFilter === "veg" && !p.isVeg) return false;
-    if (vegFilter === "non-veg" && p.isVeg) return false;
-    // Bestseller filter
-    if (onlyBestsellers && !p.isBestseller) return false;
-    // Chef's special filter
-    if (onlyChefSpecial && !p.isChefSpecial) return false;
+      // Search query filter
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const matchName = p.name.toLowerCase().includes(q);
+        const matchDesc = p.description.toLowerCase().includes(q);
+        const matchCat = p.categoryName?.toLowerCase().includes(q);
+        const matchIngredients = p.ingredients?.some((ing) =>
+          ing.toLowerCase().includes(q)
+        );
+        if (!matchName && !matchDesc && !matchCat && !matchIngredients) {
+          return false;
+        }
+      }
+      // Veg/Non-Veg filter
+      if (vegFilter === "veg" && !p.isVeg) return false;
+      if (vegFilter === "non-veg" && p.isVeg) return false;
+      // Bestseller filter
+      if (onlyBestsellers && !p.isBestseller) return false;
+      // Chef's special filter
+      if (onlyChefSpecial && !p.isChefSpecial) return false;
 
-    return true;
-  });
+      return true;
+    });
+  }, [products, selectedCategory, searchQuery, vegFilter, onlyBestsellers, onlyChefSpecial]);
+
+  // Memoized handlers
+  const handleOpenDetail = useCallback((product: Product) => {
+    setActiveProduct(product);
+  }, []);
+
+  const handleCloseModal = useCallback(() => {
+    setActiveProduct(null);
+  }, []);
+
+  const handleOpenCart = useCallback(() => {
+    setIsCartOpen(true);
+  }, []);
+
+  const handleCloseCart = useCallback(() => {
+    setIsCartOpen(false);
+  }, []);
+
+  const handleProceedToCheckout = useCallback(() => {
+    setIsCartOpen(false);
+    setIsCheckoutOpen(true);
+  }, []);
+
+  const handleCloseCheckout = useCallback(() => {
+    setIsCheckoutOpen(false);
+  }, []);
 
   return (
     <div className="min-h-screen bg-background pb-24 text-foreground selection:bg-amber-500/20 selection:text-amber-600">
@@ -134,7 +188,7 @@ function MenuContent() {
       <Navbar
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
-        onOpenCart={() => setIsCartOpen(true)}
+        onOpenCart={handleOpenCart}
       />
 
       <main className="mx-auto max-w-7xl px-4 sm:px-6 pt-4 sm:pt-6 space-y-6">
@@ -172,7 +226,7 @@ function MenuContent() {
           </div>
         </div>
 
-        {/* Product Grid - Clean like reference app */}
+        {/* Product Grid */}
         {isLoading ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 sm:gap-4">
             {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
@@ -207,7 +261,7 @@ function MenuContent() {
               <ProductCard
                 key={product.id}
                 product={product}
-                onOpenDetail={(prod) => setActiveProduct(prod)}
+                onOpenDetail={handleOpenDetail}
               />
             ))}
           </div>
@@ -215,22 +269,22 @@ function MenuContent() {
       </main>
 
       {/* Product Detail Modal */}
-      <ProductModal
+      <DynamicProductModal
         product={activeProduct}
-        onClose={() => setActiveProduct(null)}
+        onClose={handleCloseModal}
       />
 
       {/* Cart Drawer */}
-      <CartDrawer
+      <DynamicCartDrawer
         isOpen={isCartOpen}
-        onClose={() => setIsCartOpen(false)}
-        onProceedToCheckout={() => setIsCheckoutOpen(true)}
+        onClose={handleCloseCart}
+        onProceedToCheckout={handleProceedToCheckout}
       />
 
       {/* Checkout Modal */}
-      <CheckoutModal
+      <DynamicCheckoutModal
         isOpen={isCheckoutOpen}
-        onClose={() => setIsCheckoutOpen(false)}
+        onClose={handleCloseCheckout}
       />
     </div>
   );

@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { memo } from "react";
 import Image from "next/image";
 import { MapPin, Clock, Star, ShieldCheck, UtensilsCrossed } from "lucide-react";
 import { RestaurantSettings } from "@/lib/types";
@@ -10,7 +10,11 @@ interface BannerProps {
   tableNumber: string | null;
 }
 
-export function Banner({ restaurant, tableNumber }: BannerProps) {
+// Memoized Banner component
+export const Banner = memo(function Banner({
+  restaurant,
+  tableNumber,
+}: BannerProps) {
   return (
     <div className="relative overflow-hidden rounded-3xl bg-neutral-900 text-white shadow-xl">
       {/* Background Cover Image with Gradient */}
@@ -21,7 +25,9 @@ export function Banner({ restaurant, tableNumber }: BannerProps) {
           fill
           priority
           sizes="(max-width: 1200px) 100vw, 1200px"
-          className="object-cover opacity-45 transform scale-105 transition-transform duration-700 hover:scale-100"
+          className="object-cover opacity-45"
+          loading="eager"
+          decoding="sync"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-neutral-950 via-neutral-950/60 to-transparent" />
         <div className="absolute inset-0 bg-radial-at-c from-transparent to-neutral-950/80" />
@@ -93,4 +99,4 @@ export function Banner({ restaurant, tableNumber }: BannerProps) {
       </div>
     </div>
   );
-}
+});

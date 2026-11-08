@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { memo, useMemo } from "react";
 import Image from "next/image";
 import { Category } from "@/lib/types";
 import { Flame, Sparkles, Award } from "lucide-react";
@@ -17,7 +17,8 @@ interface CategoryBarProps {
   onToggleChefSpecial: () => void;
 }
 
-export function CategoryBar({
+// Memoized CategoryBar to prevent unnecessary re-renders
+export const CategoryBar = memo(function CategoryBar({
   categories,
   selectedCategory,
   onSelectCategory,
@@ -28,6 +29,50 @@ export function CategoryBar({
   onlyChefSpecial,
   onToggleChefSpecial,
 }: CategoryBarProps) {
+  // Memoize categories rendering
+  const categoryButtons = useMemo(
+    () =>
+      categories.map((cat) => {
+        const isSelected = selectedCategory === cat.id;
+        return (
+          <button
+            key={cat.id}
+            onClick={() => onSelectCategory(cat.id)}
+            className={`flex items-center gap-2 flex-shrink-0 rounded-2xl px-3.5 py-1.5 text-xs sm:text-sm font-medium transition-all ${
+              isSelected
+                ? "bg-amber-500 text-white font-semibold shadow-md shadow-amber-500/25 scale-102"
+                : "bg-muted/70 text-muted-foreground hover:bg-muted hover:text-foreground border border-border/40"
+            }`}
+          >
+            <div className="relative h-6 w-6 rounded-full overflow-hidden flex-shrink-0">
+              <Image
+                src={cat.image}
+                alt={cat.name}
+                fill
+                sizes="24px"
+                className="object-cover"
+                loading="lazy"
+                decoding="async"
+              />
+            </div>
+            <span>{cat.name}</span>
+            {cat.itemCount !== undefined && (
+              <span
+                className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
+                  isSelected
+                    ? "bg-white/25 text-white"
+                    : "bg-background text-muted-foreground"
+                }`}
+              >
+                {cat.itemCount}
+              </span>
+            )}
+          </button>
+        );
+      }),
+    [categories, selectedCategory, onSelectCategory]
+  );
+
   return (
     <div className="sticky top-16 z-30 w-full border-b border-border/50 bg-background/95 backdrop-blur-md pt-3 pb-2 shadow-sm">
       <div className="mx-auto max-w-7xl px-4 sm:px-6">
@@ -46,42 +91,7 @@ export function CategoryBar({
             <span>Full Menu</span>
           </button>
 
-          {categories.map((cat) => {
-            const isSelected = selectedCategory === cat.id;
-            return (
-              <button
-                key={cat.id}
-                onClick={() => onSelectCategory(cat.id)}
-                className={`flex items-center gap-2 flex-shrink-0 rounded-2xl px-3.5 py-1.5 text-xs sm:text-sm font-medium transition-all ${
-                  isSelected
-                    ? "bg-amber-500 text-white font-semibold shadow-md shadow-amber-500/25 scale-102"
-                    : "bg-muted/70 text-muted-foreground hover:bg-muted hover:text-foreground border border-border/40"
-                }`}
-              >
-                <div className="relative h-6 w-6 rounded-full overflow-hidden flex-shrink-0">
-                  <Image
-                    src={cat.image}
-                    alt={cat.name}
-                    fill
-                    sizes="24px"
-                    className="object-cover"
-                  />
-                </div>
-                <span>{cat.name}</span>
-                {cat.itemCount !== undefined && (
-                  <span
-                    className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
-                      isSelected
-                        ? "bg-white/25 text-white"
-                        : "bg-background text-muted-foreground"
-                    }`}
-                  >
-                    {cat.itemCount}
-                  </span>
-                )}
-              </button>
-            );
-          })}
+          {categoryButtons}
         </div>
 
         {/* Dietary and High-Value Quick Filter Toggles */}
@@ -155,4 +165,4 @@ export function CategoryBar({
       </div>
     </div>
   );
-}
+});
