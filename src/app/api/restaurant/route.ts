@@ -1,27 +1,17 @@
-import { NextResponse } from "next/server";
-import { db } from "@/lib/store";
+import { NextResponse } from 'next/server';
+import { store } from '@/lib/store';
 
 export async function GET() {
   try {
-    const restaurant = db.getRestaurant();
-    return NextResponse.json({ success: true, data: restaurant });
-  } catch (err: any) {
-    return NextResponse.json(
-      { success: false, error: err.message },
-      { status: 500 }
-    );
-  }
-}
+    const settings = store.getRestaurant();
+    const tables = store.getTables();
+    const categories = store.getCategories();
 
-export async function PATCH(request: Request) {
-  try {
-    const body = await request.json();
-    const updated = db.updateRestaurant(body);
-    return NextResponse.json({ success: true, data: updated });
-  } catch (err: any) {
-    return NextResponse.json(
-      { success: false, error: err.message },
-      { status: 400 }
-    );
+    return NextResponse.json({
+      success: true,
+      data: { settings, tables, categories },
+    });
+  } catch (error: any) {
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }

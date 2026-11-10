@@ -1,57 +1,59 @@
-import { NextResponse } from "next/server";
-import { db } from "@/lib/store";
+import { NextRequest, NextResponse } from 'next/server';
+import { store } from '@/lib/store';
+import type { Order } from '@/lib/types';
 
-export async function GET(request: Request) {
+export async function GET() {
   try {
-    const { searchParams } = new URL(request.url);
-    const tableNumber = searchParams.get("table");
-    const status = searchParams.get("status");
-
-    let orders = db.getOrders();
-
-    if (tableNumber) {
-      orders = orders.filter((o) => o.tableNumber === tableNumber);
-    }
-
-    if (status && status !== "all") {
-      orders = orders.filter((o) => o.status === status);
-    }
+    const orders = store.getOrders().map(o => ({
+      id: o.id,
+      orderNumber: o.orderNumber,
+      tableNumber: o.tableNumber,
+      status: o.status,
+      paymentStatus: o.paymentStatus,
+      paymentMethod: o.paymentMethod,
+      customerName: o.customerName,
+      createdAt: o.createdAt,
+    }));
 
     return NextResponse.json({ success: true, data: orders });
-  } catch (err: any) {
-    return NextResponse.json(
-      { success: false, error: err.message || "Failed to fetch orders" },
-      { status: 500 }
-    );
+  } catch (error: any) {
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
+    const { tableNumber, customerName, customerPhone, items, paymentMethod, specialInstructions } = body;
 
-    if (!body.tableNumber || !body.items || !Array.isArray(body.items) || body.items.length === 0) {
+    // Validate required fields
+    if (!tableNumber || !items || items.length === 0) {
       return NextResponse.json(
-        { success: false, error: "Table number and ordered items are required" },
+        { success: false, error: 'Missing required fields' },
         { status: 400 }
       );
     }
 
-    const order = db.createOrder({
-      tableNumber: body.tableNumber,
-      customerName: body.customerName || "Dine-in Guest",
-      customerPhone: body.customerPhone,
-      items: body.items,
-      couponCode: body.couponCode,
-      paymentMethod: body.paymentMethod || "pay_at_counter",
-      specialInstructions: body.specialInstructions,
+    // Create order
+    const order = store.createOrder({
+      tableNumber,
+      customerName: customerName || 'Guest',
+      customerPhone,
+      items: items.map((item: any) => ({
+        productId: item.productId,
+        quantity: item.quantity,
+        variantId: item.variantId,
+        addonIds: item.addonIds || [],
+        spiceLevel: item.spiceLevel || 0,
+        specialInstructions: item.specialInstructions,
+      })),
+      paymentMethod: paymentMethod || 'pay_at_counter',
+      paymentStatus: paymentMethod === 'razorpay' ? 'paid' : 'pending',
+      specialInstructions,
     });
 
     return NextResponse.json({ success: true, data: order }, { status: 201 });
-  } catch (err: any) {
-    return NextResponse.json(
-      { success: false, error: err.message || "Failed to create order" },
-      { status: 400 }
-    );
+  } catch (error: any) {
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }

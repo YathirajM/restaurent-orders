@@ -1,531 +1,239 @@
 "use client";
 
-import React, { useEffect, useState, use } from "react";
-import Link from "next/link";
-import { Order, OrderStatus } from "@/lib/types";
-import { formatCurrency, formatTime } from "@/lib/utils";
-import { realtime } from "@/lib/realtime";
-import { playStatusUpdateSound } from "@/lib/sound";
-import {
-  CheckCircle2,
-  Clock,
-  ChefHat,
-  UtensilsCrossed,
-  Printer,
-  PlusCircle,
-  Sparkles,
-  ArrowLeft,
-  AlertCircle,
-  HelpCircle,
-} from "lucide-react";
+import React, { useState, useEffect, use } from 'react';
+import { useRouter } from 'next/navigation';
+import { ChevronLeft, Clock, Utensils, CheckCircle, CreditCard, Loader2 } from 'lucide-react';
+import { store } from '@/lib/store';
+import { formatCurrency, formatTime } from '@/lib/utils';
+import type { Order, OrderStatus, PaymentStatus } from '@/lib/types';
 
-const STAGES: { key: OrderStatus; label: string; desc: string }[] = [
-  { key: "placed", label: "Order Placed", desc: "Sent to captain & kitchen" },
-  { key: "accepted", label: "Accepted", desc: "Kitchen acknowledged ticket" },
-  { key: "preparing", label: "Preparing", desc: "Chef is crafting your dishes" },
-  { key: "ready", label: "Ready to Serve", desc: "Plated & waiting for pickup" },
-  { key: "served", label: "Served", desc: "Delivered to your table" },
-  { key: "completed", label: "Completed", desc: "Bill settled. Thank you!" },
-];
-
-function getStageIndex(status: OrderStatus): number {
-  switch (status) {
-    case "placed":
-      return 0;
-    case "accepted":
-      return 1;
-    case "preparing":
-      return 2;
-    case "ready":
-      return 3;
-    case "served":
-      return 4;
-    case "completed":
-      return 5;
-    default:
-      return 0;
-  }
+interface OrderPageProps {
+  params: Promise<{ orderId: string }>;
 }
 
-export default function OrderTrackingPage({
-  params,
-}: {
-  params: Promise<{ orderId: string }>;
-}) {
+const statusSteps: { status: OrderStatus; label: string; icon: typeof Clock }[] = [
+  { status: 'confirmed', label: 'Order Confirmed', icon: Clock },
+  { status: 'preparing', label: 'Preparing', icon: Utensils },
+  { status: 'ready', label: 'Ready', icon: CheckCircle },
+  { status: 'completed', label: 'Completed', icon: CheckCircle },
+];
+
+export default function OrderPage({ params }: OrderPageProps) {
   const resolvedParams = use(params);
-  const orderId = resolvedParams.orderId;
-
+  const router = useRouter();
   const [order, setOrder] = useState<Order | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
-
-  // Fetch order data
-  const fetchOrder = async () => {
-    try {
-      const res = await fetch(`/api/orders/${orderId}`);
-      const data = await res.json();
-      if (data.success && data.data) {
-        setOrder(data.data);
-        setLastUpdated(new Date());
-      }
-    } catch (err) {
-      console.error("Failed to fetch order", err);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  const [currentStep, setCurrentStep] = useState(0);
 
   useEffect(() => {
+    // Fetch order from store
+    const fetchOrder = () => {
+      const foundOrder = store.getOrderById(resolvedParams.orderId);
+      if (foundOrder) {
+        setOrder(foundOrder);
+
+        // Determine current step
+        const statusIndex = statusSteps.findIndex(s => s.status === foundOrder.status);
+        setCurrentStep(statusIndex >= 0 ? statusIndex : 0);
+      }
+    };
+
     fetchOrder();
 
-    // Listen for real-time status changes
-    const unsub = realtime.subscribe("ORDER_STATUS_UPDATED", (updatedOrder: Order) => {
-      if (updatedOrder.id === orderId) {
+    // Subscribe to updates
+    const unsubscribe = store.subscribe('orders', fetchOrder);
+
+    return () => unsubscribe();
+  }, [resolvedParams.orderId]);
+
+  // Poll for updates
+  useEffect(() => {
+    if (!order) return;
+
+    const interval = setInterval(() => {
+      const updatedOrder = store.getOrderById(resolvedParams.orderId);
+      if (updatedOrder) {
         setOrder(updatedOrder);
-        playStatusUpdateSound();
+        const statusIndex = statusSteps.findIndex(s => s.status === updatedOrder.status);
+        setCurrentStep(statusIndex >= 0 ? statusIndex : 0);
       }
-    });
+    }, 5000);
 
-    // Fallback polling every 4 seconds
-    const interval = setInterval(fetchOrder, 4000);
-
-    return () => {
-      unsub();
-      clearInterval(interval);
-    };
-  }, [orderId]);
-
-  if (isLoading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background text-foreground">
-        <div className="flex flex-col items-center gap-3">
-          <Sparkles className="h-8 w-8 text-amber-500 animate-spin" />
-          <p className="text-sm font-semibold">Retrieving your live order status...</p>
-        </div>
-      </div>
-    );
-  }
+    return () => clearInterval(interval);
+  }, [order, resolvedParams.orderId]);
 
   if (!order) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center p-6 text-center bg-background text-foreground">
-        <AlertCircle className="h-12 w-12 text-red-500 mb-3" />
-        <h2 className="font-display text-xl font-bold">Order Not Found</h2>
-        <p className="mt-1 text-xs text-muted-foreground max-w-sm">
-          We could not find an order matching #{orderId}. It may have expired or was placed in another session.
-        </p>
-        <Link
-          href="/menu"
-          className="mt-5 rounded-2xl bg-amber-500 px-6 py-2.5 text-xs font-bold text-white shadow-md hover:bg-amber-600"
-        >
-          Return to Menu
-        </Link>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 animate-spin text-amber-500 mx-auto" />
+          <p className="text-gray-600 mt-2">Loading order...</p>
+        </div>
       </div>
     );
   }
 
-  const currentStageIndex = getStageIndex(order.status);
-  const isRejected = order.status === "rejected" || order.status === "cancelled";
+  const statusIndex = statusSteps.findIndex(s => s.status === order.status);
 
   return (
-    <div className="min-h-screen bg-background pb-16 text-foreground selection:bg-amber-500/20 selection:text-amber-600">
-      {/* Top Header (Screen Only) */}
-      <header className="sticky top-0 z-40 border-b border-border/60 bg-background/80 backdrop-blur-md px-4 sm:px-6 py-3.5 no-print">
-        <div className="mx-auto flex max-w-3xl items-center justify-between">
-          <Link
-            href="/menu"
-            className="flex items-center gap-1.5 text-xs font-bold text-muted-foreground hover:text-foreground transition-colors"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            <span>Digital Menu</span>
-          </Link>
-
-          <div className="flex items-center gap-2">
-            <span className="flex h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="text-xs font-bold text-emerald-600">Live Ticket</span>
-          </div>
-
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <div className="bg-white border-b sticky top-0 z-10">
+        <div className="max-w-lg mx-auto px-4 py-4">
           <button
-            onClick={() => window.print()}
-            className="flex items-center gap-1.5 rounded-xl bg-amber-500 px-3.5 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-amber-600 transition-colors"
+            onClick={() => router.push(`/menu?table=${order.tableNumber}`)}
+            className="flex items-center gap-2 text-gray-600 hover:text-gray-900"
           >
-            <Printer className="h-3.5 w-3.5" />
-            <span>Print Tax Invoice</span>
+            <ChevronLeft className="w-5 h-5" />
+            <span>Back to Menu</span>
           </button>
-        </div>
-      </header>
-
-      {/* ─────────────────────────────────────────────────────────────
-          1. DEDICATED RESTAURANT TAX INVOICE (PRINT ONLY)
-          Appears exclusively on paper/PDF print - NO prep stages,
-          authentic restaurant bill styling with company name & subtotal
-          ───────────────────────────────────────────────────────────── */}
-      <div className="print-only mx-auto max-w-md p-6 font-mono text-black text-xs leading-relaxed">
-        {/* Company Header */}
-        <div className="text-center pb-3 border-b-2 border-dashed border-black space-y-0.5">
-          <h1 className="text-2xl font-black uppercase tracking-wider text-black">
-            The Urban Plate
-          </h1>
-          <p className="text-[11px] font-semibold text-neutral-800">
-            Fine-Casual Gastro Bistro • Dine-In Experience
-          </p>
-          <p className="text-[10px] text-neutral-600">
-            100 Feet Road, Indiranagar, Bengaluru - 560038
-          </p>
-          <p className="text-[10px] text-neutral-600">
-            Ph: +91 80 4912 3456 • GSTIN: 29AAECU1234F1Z8
-          </p>
-          <p className="text-[10px] text-neutral-600">
-            FSSAI Central Lic: 11223334000555
-          </p>
-        </div>
-
-        {/* Invoice Meta */}
-        <div className="py-2.5 border-b border-dashed border-neutral-400 space-y-1 text-[11px]">
-          <div className="text-center font-bold uppercase tracking-wider text-xs">
-            *** TAX INVOICE / DINE-IN BILL ***
-          </div>
-          <div className="flex justify-between pt-1">
-            <span>Bill No: <strong>{order.orderNumber}</strong></span>
-            <span>Date: {new Date(order.createdAt).toLocaleDateString()} {formatTime(order.createdAt)}</span>
-          </div>
-          <div className="flex justify-between">
-            <span>Table: <strong>Table {order.tableNumber}</strong></span>
-            <span>Guest: <strong>{order.customerName}</strong></span>
-          </div>
-          <div className="flex justify-between">
-            <span>Payment Mode: <strong>{order.paymentMethod === "razorpay" ? "Online (UPI/Cards)" : "Pay at Counter"}</strong></span>
-            <span>Status: <strong className="uppercase">{order.paymentStatus}</strong></span>
-          </div>
-        </div>
-
-        {/* Itemized Order Table */}
-        <div className="py-3 border-b border-dashed border-neutral-400">
-          <div className="grid grid-cols-12 font-bold border-b border-neutral-300 pb-1 mb-2 text-[10px] uppercase">
-            <span className="col-span-6">Item Description</span>
-            <span className="col-span-2 text-center">Qty</span>
-            <span className="col-span-2 text-right">Rate</span>
-            <span className="col-span-2 text-right">Amount</span>
-          </div>
-
-          <div className="space-y-2">
-            {order.items.map((item) => (
-              <div key={item.id} className="text-[11px]">
-                <div className="grid grid-cols-12 items-start">
-                  <div className="col-span-6 pr-1 font-semibold">
-                    {item.productName}
-                    {item.customization?.selectedVariant && (
-                      <p className="text-[9px] text-neutral-600 font-normal">
-                        Size: {item.customization.selectedVariant.name}
-                      </p>
-                    )}
-                    {item.customization?.selectedAddons && item.customization.selectedAddons.length > 0 && (
-                      <p className="text-[9px] text-neutral-600 font-normal">
-                        Add: {item.customization.selectedAddons.map((a) => a.name).join(", ")}
-                      </p>
-                    )}
-                  </div>
-                  <span className="col-span-2 text-center">{item.quantity}</span>
-                  <span className="col-span-2 text-right">{formatCurrency(item.unitPrice)}</span>
-                  <span className="col-span-2 text-right font-bold">{formatCurrency(item.subtotal)}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Subtotal & Financial Breakdown */}
-        <div className="py-2.5 border-b-2 border-dashed border-black space-y-1 text-[11px]">
-          <div className="flex justify-between">
-            <span>Subtotal:</span>
-            <span>{formatCurrency(order.subtotal)}</span>
-          </div>
-
-          {order.discountAmount > 0 && (
-            <div className="flex justify-between text-neutral-700">
-              <span>Coupon Discount ({order.couponCode}):</span>
-              <span>-{formatCurrency(order.discountAmount)}</span>
-            </div>
-          )}
-
-          <div className="flex justify-between font-semibold pt-0.5">
-            <span>Taxable Amount:</span>
-            <span>{formatCurrency(order.subtotal - order.discountAmount)}</span>
-          </div>
-
-          <div className="flex justify-between text-neutral-600">
-            <span>CGST (2.5%):</span>
-            <span>{formatCurrency(Math.round(order.taxAmount / 2))}</span>
-          </div>
-
-          <div className="flex justify-between text-neutral-600">
-            <span>SGST (2.5%):</span>
-            <span>{formatCurrency(Math.round(order.taxAmount / 2))}</span>
-          </div>
-
-          {order.serviceChargeAmount > 0 && (
-            <div className="flex justify-between text-neutral-600">
-              <span>Service Charge (5%):</span>
-              <span>{formatCurrency(order.serviceChargeAmount)}</span>
-            </div>
-          )}
-
-          <div className="flex justify-between pt-2 border-t border-dashed border-neutral-400 font-black text-sm">
-            <span>NET TOTAL PAYABLE:</span>
-            <span>{formatCurrency(order.totalAmount)}</span>
-          </div>
-        </div>
-
-        {/* Footer Note */}
-        <div className="pt-3 text-center text-[10px] space-y-1">
-          <p className="font-bold">Thank you for dining at The Urban Plate!</p>
-          <p className="text-neutral-600">Please visit us again • Have a wonderful day!</p>
-          <p className="text-[9px] text-neutral-400">Generated by Restaurant POS • GST Invoice</p>
         </div>
       </div>
 
-      {/* ─────────────────────────────────────────────────────────────
-          2. INTERACTIVE SCREEN UI (SCREEN ONLY - HIDDEN ON PRINT)
-          Live stage progression, visual dish photos, elapsed timer
-          ───────────────────────────────────────────────────────────── */}
-      <main className="no-print mx-auto max-w-3xl px-4 sm:px-6 pt-6 space-y-6">
-        {/* Order Header Card */}
-        <div className="relative overflow-hidden rounded-3xl border border-border/80 bg-card p-6 shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <p className="font-display text-xs font-black uppercase tracking-wider text-amber-600 mb-1">
-                The Urban Plate
-              </p>
-              <div className="flex items-center gap-2">
-                <span className="rounded-full bg-amber-500/10 px-2.5 py-0.5 text-xs font-extrabold text-amber-600 border border-amber-500/20">
-                  {order.orderNumber}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  {formatTime(order.createdAt)}
-                </span>
-              </div>
-              <h1 className="font-display text-2xl sm:text-3xl font-black text-foreground mt-1">
-                Table {order.tableNumber}
-              </h1>
-              <p className="text-xs text-muted-foreground">
-                Guest: <span className="font-semibold text-foreground">{order.customerName}</span>
-              </p>
+      <div className="max-w-lg mx-auto px-4 py-6">
+        {/* Order Status Card */}
+        <div className="bg-white rounded-2xl shadow-sm p-6 mb-4">
+          <div className="text-center mb-6">
+            <div className={`w-16 h-16 rounded-full mx-auto flex items-center justify-center mb-3 ${
+              order.status === 'ready' ? 'bg-green-100' :
+              order.status === 'preparing' ? 'bg-amber-100' :
+              'bg-blue-100'
+            }`}>
+              {order.status === 'ready' ? (
+                <CheckCircle className="w-8 h-8 text-green-600" />
+              ) : order.status === 'preparing' ? (
+                <Utensils className="w-8 h-8 text-amber-600" />
+              ) : (
+                <Clock className="w-8 h-8 text-blue-600" />
+              )}
             </div>
-
-            {/* Estimated Prep Box */}
-            <div className="flex items-center gap-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 p-3 sm:p-4">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500 text-white">
-                <Clock className="h-5 w-5" />
-              </div>
-              <div>
-                <p className="text-[11px] font-bold text-amber-600 uppercase tracking-wider">
-                  Prep Window
-                </p>
-                <p className="font-display text-lg font-black text-foreground">
-                  ~{order.estimatedPrepMinutes} Mins
-                </p>
-              </div>
-            </div>
+            <h1 className="text-xl font-bold text-gray-900">
+              {order.status === 'ready' ? 'Your Order is Ready!' :
+               order.status === 'preparing' ? 'Preparing Your Food' :
+               order.status === 'completed' ? 'Order Completed' :
+               'Order Confirmed'}
+            </h1>
+            <p className="text-gray-600 text-sm mt-1">
+              Order #{order.orderNumber}
+            </p>
           </div>
 
-          {/* Rejection notice if any */}
-          {isRejected && (
-            <div className="mt-4 rounded-2xl bg-red-500/10 border border-red-500/20 p-4 text-xs text-red-600">
-              <p className="font-bold">Order was declined by the restaurant.</p>
-              {order.rejectionReason && <p className="mt-0.5">Reason: {order.rejectionReason}</p>}
-            </div>
-          )}
-        </div>
+          {/* Status Timeline */}
+          <div className="relative">
+            {/* Progress Line */}
+            <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-gray-200" />
 
-        {/* Live Progression Timeline (Screen Only) */}
-        {!isRejected && (
-          <div className="rounded-3xl border border-border/80 bg-card p-6 shadow-sm">
-            <h3 className="font-display text-base font-bold text-foreground mb-6">
-              Live Preparation Stages
-            </h3>
-
-            <div className="relative pl-6 sm:pl-8 space-y-6 before:absolute before:left-2.5 sm:before:left-3.5 before:top-3 before:bottom-3 before:w-0.5 before:bg-muted-foreground/20">
-              {STAGES.map((stage, idx) => {
-                const isPassed = idx <= currentStageIndex;
-                const isCurrent = idx === currentStageIndex;
+            <div className="space-y-6">
+              {statusSteps.map((step, index) => {
+                const isCompleted = index <= statusIndex;
+                const isCurrent = index === statusIndex;
+                const StepIcon = step.icon;
 
                 return (
-                  <div key={stage.key} className="relative flex items-start gap-4">
-                    {/* Stage Dot / Icon */}
-                    <div
-                      className={`absolute -left-6 sm:-left-8 flex h-6 w-6 sm:h-7 sm:w-7 items-center justify-center rounded-full text-xs font-bold transition-all ${
-                        isCurrent
-                          ? "bg-amber-500 text-white ring-4 ring-amber-500/25 scale-110 shadow-md"
-                          : isPassed
-                          ? "bg-emerald-600 text-white"
-                          : "bg-muted text-muted-foreground border border-border"
-                      }`}
-                    >
-                      {isPassed ? (
-                        <CheckCircle2 className="h-4 w-4 stroke-3" />
+                  <div key={step.status} className="relative flex items-start gap-4">
+                    <div className={`relative z-10 w-8 h-8 rounded-full flex items-center justify-center ${
+                      isCompleted
+                        ? step.status === 'ready' ? 'bg-green-500' :
+                          step.status === 'preparing' ? 'bg-amber-500' :
+                          'bg-blue-500'
+                        : 'bg-gray-200'
+                    }`}>
+                      {isCompleted ? (
+                        <StepIcon className="w-4 h-4 text-white" />
                       ) : (
-                        <span>{idx + 1}</span>
+                        <div className="w-2 h-2 rounded-full bg-gray-400" />
                       )}
                     </div>
-
-                    {/* Stage Details */}
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h4
-                          className={`text-xs sm:text-sm font-bold ${
-                            isCurrent
-                              ? "text-amber-600 font-black"
-                              : isPassed
-                              ? "text-foreground"
-                              : "text-muted-foreground"
-                          }`}
-                        >
-                          {stage.label}
-                        </h4>
-                        {isCurrent && (
-                          <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-600 animate-pulse">
-                            Active
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-[11px] text-muted-foreground mt-0.5">
-                        {stage.desc}
-                      </p>
+                    <div className={isCompleted ? 'opacity-100' : 'opacity-50'}>
+                      <p className="font-medium text-gray-900">{step.label}</p>
+                      {isCurrent && (
+                        <p className="text-sm text-gray-600 mt-0.5">In progress...</p>
+                      )}
                     </div>
                   </div>
                 );
               })}
             </div>
           </div>
-        )}
+        </div>
 
-        {/* Ordered Dishes Summary with Photos */}
-        <div className="rounded-3xl border border-border/80 bg-card p-6 shadow-sm space-y-4">
-          <div className="flex items-center justify-between border-b border-border/60 pb-3">
-            <h3 className="font-display text-base font-bold text-foreground">
-              Order Details ({order.items.length} items)
-            </h3>
-            <span
-              className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${
-                order.paymentStatus === "paid"
-                  ? "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20"
-                  : "bg-amber-500/10 text-amber-600 border border-amber-500/20"
-              }`}
-            >
-              {order.paymentStatus === "paid" ? "Paid Online" : "Pay at Counter"}
-            </span>
-          </div>
+        {/* Order Details */}
+        <div className="bg-white rounded-2xl shadow-sm p-6 mb-4">
+          <h2 className="font-bold text-gray-900 mb-4">Order Details</h2>
 
-          <div className="divide-y divide-border/40 space-y-3">
-            {order.items.map((item) => (
-              <div key={item.id} className="pt-3 first:pt-0 flex items-start justify-between gap-3">
-                <div className="flex items-start gap-3">
-                  {/* Dish Photo */}
-                  <div className="relative h-14 w-14 sm:h-16 sm:w-16 flex-shrink-0 overflow-hidden rounded-2xl bg-muted border border-border/60 shadow-xs">
-                    <img
-                      src={item.productImage || "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400&q=75"}
-                      alt={item.productName}
-                      className="h-full w-full object-cover"
-                    />
-                    <span className="absolute bottom-1 right-1 flex h-4 min-w-4 px-1 items-center justify-center rounded-md bg-black/80 backdrop-blur-xs text-[10px] font-black text-white">
-                      {item.quantity}x
-                    </span>
-                  </div>
-
-                  <div>
-                    <h4 className="text-xs sm:text-sm font-bold text-foreground">
-                      {item.productName}
-                    </h4>
-                    {item.customization?.selectedVariant && (
-                      <p className="text-[11px] text-amber-600 font-medium">
-                        Size: {item.customization.selectedVariant.name}
-                      </p>
-                    )}
-                    {item.customization?.selectedAddons &&
-                      item.customization.selectedAddons.length > 0 && (
-                        <p className="text-[11px] text-muted-foreground">
-                          Add-ons: {item.customization.selectedAddons.map((a) => a.name).join(", ")}
-                        </p>
-                      )}
-                    {item.customization?.specialInstructions && (
-                      <p className="text-[11px] text-muted-foreground italic">
-                        &ldquo;{item.customization.specialInstructions}&rdquo;
-                      </p>
-                    )}
-                  </div>
+          <div className="space-y-3">
+            {order.items.map((item, idx) => (
+              <div key={idx} className="flex justify-between items-start">
+                <div className="flex-1">
+                  <p className="font-medium text-gray-900">
+                    {item.quantity}x {item.productName}
+                  </p>
+                  {(item.variantName || item.addonNames.length > 0) && (
+                    <p className="text-sm text-gray-500">
+                      {[item.variantName, ...item.addonNames].filter(Boolean).join(', ')}
+                    </p>
+                  )}
                 </div>
-
-                <span className="font-display text-xs sm:text-sm font-bold text-foreground">
-                  {formatCurrency(item.subtotal)}
-                </span>
+                <span className="font-medium">{formatCurrency(item.totalPrice)}</span>
               </div>
             ))}
           </div>
 
-          {/* Pricing breakdown */}
-          <div className="border-t border-border/60 pt-4 space-y-1.5 text-xs text-muted-foreground">
-            <div className="flex justify-between">
-              <span>Subtotal</span>
-              <span className="font-semibold text-foreground">
-                {formatCurrency(order.subtotal)}
-              </span>
+          <div className="border-t mt-4 pt-4 space-y-2">
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-600">Subtotal</span>
+              <span>{formatCurrency(order.subtotal)}</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-600">Tax & Service</span>
+              <span>{formatCurrency(order.taxAmount + order.serviceCharge)}</span>
             </div>
             {order.discountAmount > 0 && (
-              <div className="flex justify-between text-emerald-600 font-semibold">
-                <span>Coupon Discount ({order.couponCode})</span>
+              <div className="flex justify-between text-sm text-green-600">
+                <span>Discount</span>
                 <span>-{formatCurrency(order.discountAmount)}</span>
               </div>
             )}
-            <div className="flex justify-between">
-              <span>GST (5%)</span>
-              <span className="font-semibold text-foreground">
-                {formatCurrency(order.taxAmount)}
-              </span>
-            </div>
-            {order.serviceChargeAmount > 0 && (
-              <div className="flex justify-between">
-                <span>Service Charge (5%)</span>
-                <span className="font-semibold text-foreground">
-                  {formatCurrency(order.serviceChargeAmount)}
-                </span>
-              </div>
-            )}
-            <div className="flex justify-between pt-2 border-t border-border/60 text-sm font-black text-foreground">
-              <span>Total Bill</span>
-              <span className="font-display text-base text-amber-600">
-                {formatCurrency(order.totalAmount)}
-              </span>
+            <div className="flex justify-between font-bold text-lg">
+              <span>Total</span>
+              <span>{formatCurrency(order.total)}</span>
             </div>
           </div>
         </div>
 
-        {/* Add more dishes / Table Actions */}
-        <div className="flex flex-col sm:flex-row gap-3">
-          <Link
-            href={`/menu?table=${order.tableNumber}`}
-            className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-amber-500 py-3.5 text-xs sm:text-sm font-bold text-white shadow-md shadow-amber-500/25 hover:bg-amber-600 transition-all"
-          >
-            <PlusCircle className="h-4 w-4" />
-            <span>Add More Dishes to Table {order.tableNumber}</span>
-          </Link>
+        {/* Payment Status */}
+        <div className="bg-white rounded-2xl shadow-sm p-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                order.paymentStatus === 'paid' ? 'bg-green-100' : 'bg-amber-100'
+              }`}>
+                <CreditCard className={`w-5 h-5 ${
+                  order.paymentStatus === 'paid' ? 'text-green-600' : 'text-amber-600'
+                }`} />
+              </div>
+              <div>
+                <p className="font-medium text-gray-900">Payment</p>
+                <p className="text-sm text-gray-600">
+                  {order.paymentStatus === 'paid' ? 'Paid' : 'Pay at Counter'}
+                </p>
+              </div>
+            </div>
+            <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+              order.paymentStatus === 'paid'
+                ? 'bg-green-100 text-green-700'
+                : 'bg-amber-100 text-amber-700'
+            }`}>
+              {order.paymentStatus === 'paid' ? 'Paid' : 'Pending'}
+            </span>
+          </div>
 
-          <button
-            onClick={() => window.print()}
-            className="flex items-center justify-center gap-2 rounded-2xl border border-border bg-card py-3.5 px-6 text-xs sm:text-sm font-bold text-foreground hover:bg-muted transition-all"
-          >
-            <Printer className="h-4 w-4 text-muted-foreground" />
-            <span>Print Tax Invoice</span>
-          </button>
+          {order.paymentMethod === 'pay_at_counter' && (
+            <p className="text-sm text-gray-600 mt-4 p-3 bg-gray-50 rounded-xl">
+              Please pay at the counter when collecting your order.
+            </p>
+          )}
         </div>
-
-        {/* Server Call Button Note */}
-        <div className="rounded-2xl border border-border/60 bg-muted/40 p-4 text-center text-xs text-muted-foreground">
-          <p>Need anything else? Simply let your table captain know.</p>
-          <p className="mt-0.5 text-[11px] text-neutral-400">
-            The Urban Plate • 100 Feet Road, Indiranagar, Bengaluru • GSTIN: 29AAECU1234F1Z8
-          </p>
-        </div>
-      </main>
+      </div>
     </div>
   );
 }

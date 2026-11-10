@@ -1,412 +1,393 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import Link from "next/link";
-import Image from "next/image";
-import { DashboardAnalytics, Order, Table } from "@/lib/types";
-import { formatCurrency, formatTime, formatRelativeTime } from "@/lib/utils";
-import { realtime } from "@/lib/realtime";
+import React, { useState, useEffect } from 'react';
 import {
-  TrendingUp,
-  ShoppingBag,
-  Clock,
-  DollarSign,
-  Users,
-  Flame,
-  ArrowRight,
-  Sparkles,
-  ChevronRight,
-  CheckCircle2,
-  AlertCircle,
-} from "lucide-react";
+  LayoutDashboard, Utensils, Users, ClipboardList,
+  Settings, CreditCard, BarChart3, TrendingUp,
+  Clock, DollarSign, ShoppingBag, AlertCircle
+} from 'lucide-react';
+import { store } from '@/lib/store';
+import { formatCurrency, formatTime } from '@/lib/utils';
+import type { Order } from '@/lib/types';
 
-export default function AdminDashboardPage() {
-  const [analytics, setAnalytics] = useState<DashboardAnalytics | null>(null);
-  const [tables, setTables] = useState<Table[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-
-  const fetchDashboardData = async () => {
-    try {
-      const [anRes, tblRes] = await Promise.all([
-        fetch("/api/analytics"),
-        fetch("/api/tables"),
-      ]);
-      const anData = await anRes.json();
-      const tblData = await tblRes.json();
-
-      if (anData.success) setAnalytics(anData.data);
-      if (tblData.success) setTables(tblData.data);
-    } catch (err) {
-      console.error("Dashboard data load error", err);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+export default function AdminDashboard() {
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [stats, setStats] = useState<any>(null);
+  const [recentOrders, setRecentOrders] = useState<Order[]>([]);
+  const [pendingOrders, setPendingOrders] = useState<Order[]>([]);
+  const [settings, setSettings] = useState(store.getRestaurant());
 
   useEffect(() => {
-    fetchDashboardData();
+    const loadData = () => {
+      const orders = store.getOrders();
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
 
-    // Listen to real-time events to refresh KPIs
-    const unsubOrder = realtime.subscribe("ORDER_CREATED", () => {
-      fetchDashboardData();
-    });
-    const unsubStatus = realtime.subscribe("ORDER_STATUS_UPDATED", () => {
-      fetchDashboardData();
-    });
+      const todayOrders = orders.filter(o => new Date(o.createdAt).getTime() >= today.getTime());
+      const paidOrders = orders.filter(o => o.paymentStatus === 'paid');
 
-    const interval = setInterval(fetchDashboardData, 5000);
+      setRecentOrders(orders.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 10));
+      setPendingOrders(orders.filter(o => ['placed', 'accepted', 'preparing'].includes(o.status)));
 
-    return () => {
-      unsubOrder();
-      unsubStatus();
-      clearInterval(interval);
+      // Calculate stats
+      setStats({
+        todayOrders: todayOrders.length,
+        todayRevenue: paidOrders.filter(o => new Date(o.createdAt).getTime() >= today.getTime()).reduce((sum, o) => sum + o.totalAmount, 0),
+        totalRevenue: paidOrders.reduce((sum, o) => sum + o.totalAmount, 0),
+        pendingOrders: pendingOrders.length,
+        activeOrders: orders.filter(o => ['placed', 'accepted', 'preparing'].includes(o.status)).length,
+        completedOrders: orders.filter(o => o.status === 'completed').length,
+      });
+
+      setSettings(store.getRestaurant());
     };
+
+    loadData();
+    const unsubscribe = store.subscribe(null, loadData);
+    return () => unsubscribe();
   }, []);
 
-  if (isLoading || !analytics) {
-    return (
-      <div className="flex h-96 items-center justify-center">
-        <div className="flex flex-col items-center gap-2">
-          <Sparkles className="h-8 w-8 text-amber-500 animate-spin" />
-          <p className="text-xs font-semibold text-muted-foreground">
-            Loading SaaS Analytics...
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  const occupiedTablesCount = tables.filter((t) => t.status !== "available").length;
-  const occupancyPercent = Math.round((occupiedTablesCount / (tables.length || 12)) * 100);
+  const updateOrderStatus = (orderId: string, status: any) => {
+    store.updateOrderStatus(orderId, status);
+  };
 
   return (
-    <div className="space-y-6">
-      {/* Page Title & Range Selector */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div>
-          <h1 className="font-display text-2xl font-black text-foreground">
-            Restaurant Operations Overview
-          </h1>
-          <p className="text-xs text-muted-foreground">
-            Real-time business performance, kitchen metrics, and table sales.
-          </p>
-        </div>
+    <div className="min-h-screen bg-gray-100">
+      <div className="flex">
+        {/* Sidebar */}
+        <aside className="w-64 bg-gray-900 text-white min-h-screen p-4">
+          <div className="mb-8">
+            <h1 className="text-xl font-bold text-amber-500">Admin Panel</h1>
+            <p className="text-sm text-gray-500">Restaurant Management</p>
+          </div>
 
-        {/* Date Filter Badges */}
-        <div className="flex items-center rounded-xl bg-card border border-border p-1 text-xs">
-          <button className="rounded-lg bg-amber-500 px-3 py-1 font-bold text-white shadow-xs">
-            Today
-          </button>
-          <button className="rounded-lg px-3 py-1 font-medium text-muted-foreground hover:text-foreground">
-            Yesterday
-          </button>
-          <button className="rounded-lg px-3 py-1 font-medium text-muted-foreground hover:text-foreground">
-            7 Days
-          </button>
-          <button className="rounded-lg px-3 py-1 font-medium text-muted-foreground hover:text-foreground">
-            30 Days
-          </button>
-        </div>
-      </div>
+          <nav className="space-y-1">
+            {[
+              { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+              { id: 'orders', label: 'Orders', icon: ClipboardList },
+              { id: 'menu', label: 'Menu', icon: Utensils },
+              { id: 'tables', label: 'Tables', icon: Users },
+              { id: 'analytics', label: 'Analytics', icon: BarChart3 },
+              { id: 'settings', label: 'Settings', icon: Settings },
+            ].map(item => (
+              <button
+                key={item.id}
+                onClick={() => setActiveTab(item.id)}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+                  activeTab === item.id
+                    ? 'bg-amber-500 text-white'
+                    : 'text-gray-400 hover:text-white hover:bg-gray-800'
+                }`}
+              >
+                <item.icon className="w-5 h-5" />
+                <span>{item.label}</span>
+              </button>
+            ))}
+          </nav>
 
-      {/* KPI Cards Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Today's Sales */}
-        <div className="rounded-3xl border border-border/80 bg-card p-5 shadow-xs transition-all hover:shadow-md">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-              Today&apos;s Gross Sales
-            </span>
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600">
-              <DollarSign className="h-5 w-5" />
-            </div>
+          <div className="absolute bottom-4 left-4 right-4">
+            <a
+              href="/kds?secret=kds123"
+              target="_blank"
+              className="flex items-center justify-center gap-2 w-full py-2 bg-gray-800 rounded-lg text-sm hover:bg-gray-700"
+            >
+              <Utensils className="w-4 h-4" />
+              Open KDS
+            </a>
           </div>
-          <div className="mt-3 font-display text-2xl font-black text-foreground">
-            {formatCurrency(analytics.todaySales)}
-          </div>
-          <div className="mt-2 flex items-center gap-1.5 text-xs text-emerald-600 font-semibold">
-            <TrendingUp className="h-3.5 w-3.5" />
-            <span>+{analytics.salesGrowthPercent}% vs yesterday</span>
-          </div>
-        </div>
+        </aside>
 
-        {/* Total Orders */}
-        <div className="rounded-3xl border border-border/80 bg-card p-5 shadow-xs transition-all hover:shadow-md">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-              Total Orders
-            </span>
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-500/10 text-blue-600">
-              <ShoppingBag className="h-5 w-5" />
-            </div>
-          </div>
-          <div className="mt-3 font-display text-2xl font-black text-foreground">
-            {analytics.todayOrdersCount}
-          </div>
-          <div className="mt-2 flex items-center gap-1.5 text-xs text-emerald-600 font-semibold">
-            <TrendingUp className="h-3.5 w-3.5" />
-            <span>+{analytics.ordersGrowthPercent}% order volume</span>
-          </div>
-        </div>
-
-        {/* Active Kitchen Orders */}
-        <div className="rounded-3xl border border-border/80 bg-card p-5 shadow-xs transition-all hover:shadow-md">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-              Active Kitchen Orders
-            </span>
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-orange-500/10 text-orange-600">
-              <Clock className="h-5 w-5" />
-            </div>
-          </div>
-          <div className="mt-3 font-display text-2xl font-black text-foreground">
-            {analytics.activeOrdersCount}
-          </div>
-          <div className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
-            <span className="h-2 w-2 rounded-full bg-orange-500 animate-pulse" />
-            <span>{analytics.pendingOrdersCount} unacknowledged tickets</span>
-          </div>
-        </div>
-
-        {/* Table Occupancy & AOV */}
-        <div className="rounded-3xl border border-border/80 bg-card p-5 shadow-xs transition-all hover:shadow-md">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-              Table Occupancy
-            </span>
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-600">
-              <Users className="h-5 w-5" />
-            </div>
-          </div>
-          <div className="mt-3 font-display text-2xl font-black text-foreground">
-            {occupancyPercent}%
-          </div>
-          <div className="mt-2 text-xs text-muted-foreground font-medium">
-            {occupiedTablesCount} of {tables.length} tables currently seated (AOV: {formatCurrency(analytics.averageOrderValue)})
-          </div>
-        </div>
-      </div>
-
-      {/* Charts & Category Breakdown Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Hourly Sales Bar Chart */}
-        <div className="lg:col-span-2 rounded-3xl border border-border/80 bg-card p-6 shadow-xs">
-          <div className="flex items-center justify-between mb-6">
+        {/* Main Content */}
+        <main className="flex-1 p-8">
+          {activeTab === 'dashboard' && (
             <div>
-              <h3 className="font-display font-bold text-base text-foreground">
-                Hourly Peak Revenue Trends
-              </h3>
-              <p className="text-xs text-muted-foreground">
-                Dine-in lunch and dinner rush activity throughout the day
-              </p>
-            </div>
-            <span className="text-xs font-bold text-amber-600 bg-amber-500/10 px-2.5 py-1 rounded-lg">
-              Peak: 8:00 PM – 10:00 PM
-            </span>
-          </div>
+              <h2 className="text-2xl font-bold text-gray-900 mb-6">Dashboard</h2>
 
-          {/* Simple Clean Responsive Bar Chart */}
-          <div className="h-56 flex items-end justify-between gap-2 pt-4">
-            {analytics.hourlySales.map((item, idx) => {
-              const maxVal = 15000;
-              const heightPercent = Math.min(100, Math.round((item.sales / maxVal) * 100));
-
-              return (
-                <div key={idx} className="flex-1 flex flex-col items-center gap-2 group">
-                  <div className="text-[10px] font-bold text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">
-                    ₹{item.sales}
-                  </div>
-                  <div className="w-full bg-muted rounded-t-xl overflow-hidden h-40 flex items-end">
-                    <div
-                      style={{ height: `${heightPercent}%` }}
-                      className="w-full bg-amber-500 group-hover:bg-amber-400 rounded-t-xl transition-all duration-300 shadow-sm"
-                    />
-                  </div>
-                  <span className="text-[10px] text-muted-foreground font-semibold">
-                    {item.hour}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Category Share & Top Dishes */}
-        <div className="rounded-3xl border border-border/80 bg-card p-6 shadow-xs flex flex-col justify-between">
-          <div>
-            <h3 className="font-display font-bold text-base text-foreground mb-1">
-              Category Distribution
-            </h3>
-            <p className="text-xs text-muted-foreground mb-4">
-              Share of total sales across menu sections
-            </p>
-
-            <div className="space-y-3.5">
-              {analytics.categoryBreakdown.map((cat, i) => (
-                <div key={i} className="space-y-1">
-                  <div className="flex justify-between text-xs font-semibold">
-                    <span className="text-foreground">{cat.category}</span>
-                    <span className="text-muted-foreground">{cat.percentage}%</span>
-                  </div>
-                  <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
-                    <div
-                      style={{ width: `${cat.percentage}%` }}
-                      className={`h-full rounded-full ${
-                        i === 0
-                          ? "bg-amber-500"
-                          : i === 1
-                          ? "bg-orange-500"
-                          : i === 2
-                          ? "bg-blue-500"
-                          : "bg-emerald-500"
-                      }`}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="mt-6 border-t border-border/60 pt-4">
-            <Link
-              href="/admin/menu"
-              className="flex items-center justify-between text-xs font-bold text-amber-600 hover:text-amber-500 transition-colors"
-            >
-              <span>Manage Dish Catalog & Stock</span>
-              <ChevronRight className="h-4 w-4" />
-            </Link>
-          </div>
-        </div>
-      </div>
-
-      {/* Two Column Grid: Top Selling Dishes + Recent Orders */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Bestselling Dishes */}
-        <div className="rounded-3xl border border-border/80 bg-card p-6 shadow-xs">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <Flame className="h-4 w-4 text-amber-500 fill-amber-500" />
-              <h3 className="font-display font-bold text-base text-foreground">
-                Top Bestselling Dishes
-              </h3>
-            </div>
-            <Link
-              href="/admin/menu"
-              className="text-xs font-bold text-amber-600 hover:underline"
-            >
-              View All
-            </Link>
-          </div>
-
-          <div className="space-y-3">
-            {analytics.bestsellers.map((dish, i) => (
-              <div
-                key={dish.productId}
-                className="flex items-center justify-between gap-3 rounded-2xl border border-border/40 p-2.5 hover:bg-muted/40 transition-colors"
-              >
-                <div className="flex items-center gap-3">
-                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-muted text-xs font-bold text-foreground">
-                    #{i + 1}
-                  </span>
-                  <div className="relative h-11 w-11 overflow-hidden rounded-xl bg-muted">
-                    {dish.image && (
-                      <Image
-                        src={dish.image}
-                        alt={dish.productName}
-                        fill
-                        sizes="44px"
-                        className="object-cover"
-                      />
-                    )}
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-bold text-foreground line-clamp-1">
-                      {dish.productName}
-                    </h4>
-                    <p className="text-[11px] text-muted-foreground">
-                      {dish.category} • {dish.count} orders
-                    </p>
-                  </div>
-                </div>
-
-                <div className="text-right">
-                  <div className="font-display text-xs font-black text-foreground">
-                    {formatCurrency(dish.revenue)}
-                  </div>
-                  <span className="text-[10px] text-emerald-600 font-semibold">
-                    Popular
-                  </span>
-                </div>
+              {/* Stats Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+                <StatCard
+                  title="Today's Orders"
+                  value={stats?.todayOrders || 0}
+                  icon={ShoppingBag}
+                  color="blue"
+                />
+                <StatCard
+                  title="Today's Revenue"
+                  value={formatCurrency(stats?.todayRevenue || 0)}
+                  icon={DollarSign}
+                  color="green"
+                />
+                <StatCard
+                  title="Active Orders"
+                  value={stats?.activeOrders || 0}
+                  icon={Clock}
+                  color="amber"
+                />
+                <StatCard
+                  title="Pending Payment"
+                  value={pendingOrders.filter(o => o.paymentStatus === 'pending').length}
+                  icon={AlertCircle}
+                  color="red"
+                />
               </div>
-            ))}
-          </div>
-        </div>
 
-        {/* Recent Orders List */}
-        <div className="rounded-3xl border border-border/80 bg-card p-6 shadow-xs">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-display font-bold text-base text-foreground">
-              Live Order Stream
-            </h3>
-            <Link
-              href="/admin/orders"
-              className="text-xs font-bold text-amber-600 hover:underline flex items-center gap-1"
-            >
-              <span>Manage Orders</span>
-              <ArrowRight className="h-3.5 w-3.5" />
-            </Link>
-          </div>
+              {/* Active Orders */}
+              <div className="bg-white rounded-xl shadow-sm p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-semibold text-gray-900">Active Orders</h3>
+                  <span className="text-sm text-gray-500">{pendingOrders.length} orders</span>
+                </div>
 
-          <div className="space-y-2.5">
-            {analytics.recentOrders.slice(0, 5).map((order) => (
-              <div
-                key={order.id}
-                className="flex items-center justify-between gap-3 rounded-2xl border border-border/40 p-3 hover:bg-muted/30 transition-colors"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600 font-black text-xs">
-                    T{order.tableNumber}
+                {pendingOrders.length === 0 ? (
+                  <div className="text-center py-8 text-gray-500">
+                    No active orders
                   </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-xs text-foreground">
-                        #{order.orderNumber}
-                      </span>
-                      <span className="text-[11px] text-muted-foreground">
-                        {order.customerName}
-                      </span>
+                ) : (
+                  <div className="space-y-3">
+                    {pendingOrders.slice(0, 5).map(order => (
+                      <div key={order.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                        <div>
+                          <div className="font-medium">#{order.orderNumber} - Table {order.tableNumber}</div>
+                          <div className="text-sm text-gray-500">{order.items.length} items • {order.customerName}</div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <select
+                            value={order.status}
+                            onChange={(e) => updateOrderStatus(order.id, e.target.value)}
+                            className="px-3 py-1 rounded-lg border border-gray-200 text-sm"
+                          >
+                            <option value="placed">Placed</option>
+                            <option value="accepted">Accepted</option>
+                            <option value="preparing">Preparing</option>
+                            <option value="ready">Ready</option>
+                            <option value="served">Served</option>
+                            <option value="completed">Completed</option>
+                          </select>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'orders' && (
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900 mb-6">All Orders</h2>
+              <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+                <table className="w-full">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">Order</th>
+                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">Table</th>
+                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">Customer</th>
+                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">Items</th>
+                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">Total</th>
+                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">Status</th>
+                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">Time</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {recentOrders.map(order => (
+                      <tr key={order.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 font-medium">#{order.orderNumber}</td>
+                        <td className="px-4 py-3">Table {order.tableNumber}</td>
+                        <td className="px-4 py-3">{order.customerName}</td>
+                        <td className="px-4 py-3">{order.items.length} items</td>
+                        <td className="px-4 py-3 font-medium">{formatCurrency(order.totalAmount)}</td>
+                        <td className="px-4 py-3">
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                            order.status === 'completed' ? 'bg-green-100 text-green-700' :
+                            order.status === 'ready' ? 'bg-blue-100 text-blue-700' :
+                            order.status === 'preparing' ? 'bg-amber-100 text-amber-700' :
+                            'bg-gray-100 text-gray-700'
+                          }`}>
+                            {order.status}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-500">{formatTime(order.createdAt)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'menu' && (
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900 mb-6">Menu Management</h2>
+              <div className="bg-white rounded-xl shadow-sm p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <p className="text-gray-600">Products: {store.getProducts().length}</p>
+                  <button className="px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600">
+                    Add Product
+                  </button>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {store.getProducts().map(product => (
+                    <div key={product.id} className="p-4 border rounded-xl">
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 rounded-lg bg-gray-100 overflow-hidden">
+                          <img src={product.image} alt={product.name} className="w-full h-full object-cover" />
+                        </div>
+                        <div className="flex-1">
+                          <h4 className="font-medium">{product.name}</h4>
+                          <p className="text-sm text-gray-500">{formatCurrency(product.price)}</p>
+                        </div>
+                        <span className={`px-2 py-1 rounded text-xs ${
+                          product.isAvailable ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                        }`}>
+                          {product.isAvailable ? 'Active' : 'Unavailable'}
+                        </span>
+                      </div>
                     </div>
-                    <p className="text-[11px] text-muted-foreground">
-                      {order.items.length} items • {formatRelativeTime(order.createdAt)}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="text-right">
-                  <div className="font-display text-xs font-bold text-foreground">
-                    {formatCurrency(order.totalAmount)}
-                  </div>
-                  <span
-                    className={`inline-block rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
-                      order.status === "placed"
-                        ? "bg-red-500/10 text-red-600"
-                        : order.status === "accepted"
-                        ? "bg-amber-500/10 text-amber-600"
-                        : order.status === "preparing"
-                        ? "bg-blue-500/10 text-blue-600"
-                        : order.status === "ready"
-                        ? "bg-emerald-500/10 text-emerald-600"
-                        : "bg-muted text-muted-foreground"
-                    }`}
-                  >
-                    {order.status}
-                  </span>
+                  ))}
                 </div>
               </div>
-            ))}
-          </div>
+            </div>
+          )}
+
+          {activeTab === 'tables' && (
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900 mb-6">Table Management</h2>
+              <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                {store.getTables().map(table => (
+                  <div key={table.id} className={`p-4 rounded-xl border-2 ${
+                    table.status === 'occupied'
+                      ? 'bg-amber-50 border-amber-200'
+                      : 'bg-white border-gray-200'
+                  }`}>
+                    <div className="text-center">
+                      <div className={`w-12 h-12 rounded-full mx-auto flex items-center justify-center ${
+                        table.status === 'occupied' ? 'bg-amber-500 text-white' : 'bg-gray-100 text-gray-600'
+                      }`}>
+                        <span className="font-bold">{table.tableNumber}</span>
+                      </div>
+                      <p className="mt-2 text-sm text-gray-600">Table {table.tableNumber}</p>
+                      <p className="text-xs text-gray-400">Capacity: {table.capacity}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'analytics' && (
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900 mb-6">Analytics</h2>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="bg-white rounded-xl shadow-sm p-6">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="p-2 bg-green-100 rounded-lg">
+                      <TrendingUp className="w-5 h-5 text-green-600" />
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">Total Revenue</p>
+                      <p className="text-2xl font-bold">{formatCurrency(stats?.totalRevenue || 0)}</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="bg-white rounded-xl shadow-sm p-6">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="p-2 bg-blue-100 rounded-lg">
+                      <ShoppingBag className="w-5 h-5 text-blue-600" />
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">Total Orders</p>
+                      <p className="text-2xl font-bold">{store.getOrders().length}</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="bg-white rounded-xl shadow-sm p-6">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="p-2 bg-amber-100 rounded-lg">
+                      <ClipboardList className="w-5 h-5 text-amber-600" />
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">Completed Orders</p>
+                      <p className="text-2xl font-bold">{stats?.completedOrders || 0}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'settings' && (
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900 mb-6">Settings</h2>
+              <div className="bg-white rounded-xl shadow-sm p-6 max-w-2xl">
+                <h3 className="font-semibold text-gray-900 mb-4">Restaurant Settings</h3>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Restaurant Name
+                    </label>
+                    <input
+                      type="text"
+                      defaultValue={settings?.name || ''}
+                      className="w-full px-4 py-2 rounded-lg border border-gray-200"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      GST Rate (%)
+                    </label>
+                    <input
+                      type="number"
+                      defaultValue={settings?.taxRatePercent || 0}
+                      className="w-full px-4 py-2 rounded-lg border border-gray-200"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Service Charge (%)
+                    </label>
+                    <input
+                      type="number"
+                      defaultValue={settings?.serviceChargePercent || 0}
+                      className="w-full px-4 py-2 rounded-lg border border-gray-200"
+                    />
+                  </div>
+                  <button className="px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600">
+                    Save Changes
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </main>
+      </div>
+    </div>
+  );
+}
+
+interface StatCardProps {
+  title: string;
+  value: string | number;
+  icon: React.ElementType;
+  color: 'blue' | 'green' | 'amber' | 'red';
+}
+
+function StatCard({ title, value, icon: Icon, color }: StatCardProps) {
+  const colorClasses = {
+    blue: 'bg-blue-100 text-blue-600',
+    green: 'bg-green-100 text-green-600',
+    amber: 'bg-amber-100 text-amber-600',
+    red: 'bg-red-100 text-red-600',
+  };
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm p-6">
+      <div className="flex items-center gap-3 mb-2">
+        <div className={`p-2 rounded-lg ${colorClasses[color]}`}>
+          <Icon className="w-5 h-5" />
         </div>
       </div>
+      <p className="text-2xl font-bold text-gray-900">{value}</p>
+      <p className="text-sm text-gray-600">{title}</p>
     </div>
   );
 }

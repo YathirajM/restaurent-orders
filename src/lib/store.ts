@@ -1,533 +1,506 @@
-import {
-  Category,
-  Coupon,
-  DashboardAnalytics,
+// In-memory Database Store with Supabase-like interface
+import type {
   Order,
-  OrderItem,
-  OrderStatus,
-  PaymentStatus,
   Product,
-  RestaurantSettings,
+  Category,
   Table,
-} from "./types";
-import {
-  CATEGORIES,
-  COUPONS,
-  PRODUCTS,
-  RESTAURANT,
-  SAMPLE_ORDERS,
-  TABLES,
-} from "./data";
-import { calculateOrderPricing } from "./utils";
-import { generateTableToken } from "./qr";
+  Coupon,
+  RestaurantSettings,
+  DashboardAnalytics,
+  OrderStatus,
+} from './types';
+import { generateOrderNumber } from './utils';
 
-// In-Memory Database Store for Node.js runtime environment (persists during server lifetime)
-class RestaurantDatabase {
-  private restaurant: RestaurantSettings;
-  private categories: Category[];
-  private products: Product[];
-  private tables: Table[];
-  private orders: Order[];
-  private coupons: Coupon[];
-  private orderCounter: number = 1045;
+class Database {
+  private orders: Map<string, Order> = new Map();
+  private products: Map<string, Product> = new Map();
+  private categories: Map<string, Category> = new Map();
+  private tables: Map<string, Table> = new Map();
+  private coupons: Map<string, Coupon> = new Map();
+  private restaurant: RestaurantSettings | null = null;
+  private subscribers: Set<(event: string, data: any) => void> = new Set();
 
   constructor() {
-    this.restaurant = { ...RESTAURANT };
-    this.categories = JSON.parse(JSON.stringify(CATEGORIES));
-    this.products = JSON.parse(JSON.stringify(PRODUCTS));
-    this.tables = JSON.parse(JSON.stringify(TABLES));
-    this.orders = JSON.parse(JSON.stringify(SAMPLE_ORDERS));
-    this.coupons = JSON.parse(JSON.stringify(COUPONS));
-
-    // Update table occupancy based on sample orders
-    this.syncTableOccupancy();
+    this.seedData();
   }
 
-  private syncTableOccupancy() {
-    // Reset all tables
-    this.tables.forEach((t) => {
-      t.status = "available";
-      t.activeOrderId = undefined;
-      t.currentBill = 0;
-    });
+  private seedData() {
+    // Restaurant Settings
+    this.restaurant = {
+      id: 'rest_001',
+      name: 'The Urban Plate',
+      tagline: 'Where Culinary Art Meets Modern Dining',
+      description: 'Experience a symphony of flavors crafted by award-winning chefs.',
+      logo: '/logo.svg',
+      coverImage: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=1600&q=80',
+      address: '42 MG Road, Connaught Place',
+      city: 'New Delhi',
+      phone: '+91 98765 43210',
+      email: 'hello@theurbanplate.in',
+      gstNumber: '07AABCT1234C1ZP',
+      fssaiNumber: '12345678901234',
+      openingHours: '11:00 AM – 11:00 PM',
+      isRestaurantOpen: true,
+      currency: 'INR',
+      currencySymbol: '₹',
+      taxRatePercent: 5,
+      serviceChargePercent: 5,
+      isServiceChargeEnabled: true,
+      allowPayAtCounter: true,
+      allowOnlinePayment: true,
+      soundAlertsEnabled: true,
+      estimatedPrepTimeMinutes: 20,
+      themeColor: '#c28e34',
+    };
 
-    // Mark occupied based on active orders
-    this.orders.forEach((ord) => {
-      if (
-        ord.status === "placed" ||
-        ord.status === "accepted" ||
-        ord.status === "preparing" ||
-        ord.status === "ready" ||
-        ord.status === "served"
-      ) {
-        const tbl = this.tables.find(
-          (t) => t.id === ord.tableId || t.tableNumber === ord.tableNumber
-        );
-        if (tbl) {
-          tbl.status = ord.status === "served" ? "billing" : "occupied";
-          tbl.activeOrderId = ord.id;
-          tbl.currentBill = ord.totalAmount;
-        }
+    // Categories
+    const categoriesData: Category[] = [
+      { id: 'cat_1', name: 'Starters', slug: 'starters', description: 'Crispy, crunchy, and delicious appetizers', image: 'https://images.unsplash.com/photo-1541014741259-de529411b96a?w=500&q=80', displayOrder: 1, isActive: true, itemCount: 6 },
+      { id: 'cat_2', name: 'Main Course', slug: 'main-course', description: 'Hearty, flavorful entrées', image: 'https://images.unsplash.com/photo-1585937421612-70a008356fbe?w=500&q=80', displayOrder: 2, isActive: true, itemCount: 6 },
+      { id: 'cat_3', name: 'Indian Classics', slug: 'indian', description: 'Timeless recipes from across the subcontinent', image: 'https://images.unsplash.com/photo-1565557623262-b51c2513a641?w=500&q=80', displayOrder: 3, isActive: true, itemCount: 5 },
+      { id: 'cat_4', name: 'Pizzas', slug: 'pizzas', description: 'Hand-tossed, stone-fired, impossibly cheesy', image: 'https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=500&q=80', displayOrder: 4, isActive: true, itemCount: 4 },
+      { id: 'cat_5', name: 'Burgers', slug: 'burgers', description: 'Towering, juicy, built to impress', image: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=500&q=80', displayOrder: 5, isActive: true, itemCount: 4 },
+      { id: 'cat_6', name: 'Desserts', slug: 'desserts', description: 'Indulgent sweets to end your meal', image: 'https://images.unsplash.com/photo-1551024506-0bccd828d307?w=500&q=80', displayOrder: 6, isActive: true, itemCount: 4 },
+      { id: 'cat_7', name: 'Beverages', slug: 'beverages', description: 'Refreshing sips and artisan coffees', image: 'https://images.unsplash.com/photo-1544145945-f90425340c7e?w=500&q=80', displayOrder: 7, isActive: true, itemCount: 5 },
+    ];
+    categoriesData.forEach(c => this.categories.set(c.id, c));
+
+    // Products
+    const productsData: Product[] = [
+      // Starters
+      { id: 'prod_1', categoryId: 'cat_1', categoryName: 'Starters', name: 'Smoky Paneer Tikka', description: 'Tandoor-grilled cottage cheese with aromatic spices, served with mint chutney.', price: 329, image: 'https://images.unsplash.com/photo-1567188040759-fb8a883dc6d8?w=600&q=80', isVeg: true, isBestseller: true, isChefSpecial: false, isAvailable: true, preparationTimeMinutes: 15, spiceLevel: 2, portionSize: '8 pieces', ingredients: ['Paneer', 'Yogurt', 'Bell Peppers', 'Spices'], variants: [{ id: 'v1', name: 'Half (4 pcs)', price: 199 }, { id: 'v2', name: 'Full (8 pcs)', price: 329 }], addons: [{ id: 'a1', name: 'Extra Mint Chutney', price: 29, isVeg: true }] },
+      { id: 'prod_2', categoryId: 'cat_1', categoryName: 'Starters', name: 'Buffalo Chicken Wings', description: 'Crispy double-fried wings tossed in signature buffalo sauce.', price: 399, image: 'https://images.unsplash.com/photo-1567620832903-9fc6debc209f?w=600&q=80', isVeg: false, isBestseller: true, isChefSpecial: false, isAvailable: true, preparationTimeMinutes: 18, spiceLevel: 3, portionSize: '8 wings', ingredients: ['Chicken Wings', 'Hot Sauce', 'Butter'], addons: [{ id: 'a2', name: 'Extra Ranch Dip', price: 39, isVeg: true }] },
+      { id: 'prod_3', categoryId: 'cat_1', categoryName: 'Starters', name: 'Crispy Spring Rolls', description: 'Golden hand-rolled rolls with mixed vegetables and glass noodles.', price: 249, image: 'https://images.unsplash.com/photo-1606525437679-2211fd4a5c93?w=600&q=80', isVeg: true, isBestseller: false, isChefSpecial: false, isAvailable: true, preparationTimeMinutes: 12, spiceLevel: 1, portionSize: '6 rolls', ingredients: ['Spring Roll Wrappers', 'Cabbage', 'Carrots', 'Glass Noodles'] },
+      { id: 'prod_4', categoryId: 'cat_1', categoryName: 'Starters', name: 'Loaded Nachos Supreme', description: 'Crispy tortilla chips with cheese, jalapeños, salsa, sour cream.', price: 349, image: 'https://images.unsplash.com/photo-1513456852971-30c0b8199d4d?w=600&q=80', isVeg: true, isBestseller: false, isChefSpecial: false, isAvailable: true, preparationTimeMinutes: 10, spiceLevel: 2, portionSize: 'Serves 2', ingredients: ['Tortilla Chips', 'Cheddar', 'Jalapeños', 'Salsa'], addons: [{ id: 'a3', name: 'Add Chicken', price: 89, isVeg: false }] },
+      // Main Course
+      { id: 'prod_5', categoryId: 'cat_2', categoryName: 'Main Course', name: 'Butter Chicken', description: 'Tender tandoori chicken in velvety tomato-butter-cream gravy.', price: 399, image: 'https://images.unsplash.com/photo-1603894584373-5ac82b2ae398?w=600&q=80', isVeg: false, isBestseller: true, isChefSpecial: false, isAvailable: true, preparationTimeMinutes: 20, spiceLevel: 1, portionSize: 'Serves 2', ingredients: ['Chicken', 'Tomato', 'Butter', 'Cream'], addons: [{ id: 'a4', name: 'Butter Naan (2)', price: 69, isVeg: true }, { id: 'a5', name: 'Basmati Rice', price: 99, isVeg: true }] },
+      { id: 'prod_6', categoryId: 'cat_2', categoryName: 'Main Course', name: 'Truffle Alfredo Pasta', description: 'Silky fettuccine in creamy truffle-infused Parmesan sauce.', price: 449, image: 'https://images.unsplash.com/photo-1645112411341-6c4fd023714a?w=600&q=80', isVeg: true, isBestseller: true, isChefSpecial: true, isAvailable: true, preparationTimeMinutes: 20, spiceLevel: 0, portionSize: 'Serves 1', ingredients: ['Fettuccine', 'Truffle Oil', 'Parmesan', 'Mushrooms'], variants: [{ id: 'v3', name: 'Regular', price: 449 }, { id: 'v4', name: 'Large', price: 599 }] },
+      { id: 'prod_7', categoryId: 'cat_2', categoryName: 'Main Course', name: 'Hyderabadi Dum Biryani', description: 'Fragrant basmati rice with tender meat, saffron, caramelized onions.', price: 449, image: 'https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?w=600&q=80', isVeg: false, isBestseller: true, isChefSpecial: true, isAvailable: true, preparationTimeMinutes: 30, spiceLevel: 2, portionSize: 'Serves 1-2', ingredients: ['Basmati Rice', 'Chicken/Lamb', 'Saffron', 'Onions'], variants: [{ id: 'v5', name: 'Chicken', price: 449 }, { id: 'v6', name: 'Lamb', price: 549 }], addons: [{ id: 'a6', name: 'Raita', price: 49, isVeg: true }] },
+      { id: 'prod_8', categoryId: 'cat_2', categoryName: 'Main Course', name: 'Dal Makhani', description: 'Black lentils slow-cooked with tomato, butter, and cream.', price: 299, image: 'https://images.unsplash.com/photo-1546833999-b9f581a1996d?w=600&q=80', isVeg: true, isBestseller: true, isChefSpecial: false, isAvailable: true, preparationTimeMinutes: 18, spiceLevel: 1, portionSize: 'Serves 2', ingredients: ['Black Lentils', 'Kidney Beans', 'Tomato', 'Butter', 'Cream'], addons: [{ id: 'a7', name: 'Jeera Rice', price: 119, isVeg: true }] },
+      // Pizzas
+      { id: 'prod_9', categoryId: 'cat_4', categoryName: 'Pizzas', name: 'Classic Margherita', description: 'San Marzano tomatoes, fresh mozzarella, basil, olive oil.', price: 349, image: 'https://images.unsplash.com/photo-1574071318508-1cdbab80d002?w=600&q=80', isVeg: true, isBestseller: true, isChefSpecial: false, isAvailable: true, preparationTimeMinutes: 15, spiceLevel: 0, portionSize: '10 inch', ingredients: ['Pizza Dough', 'San Marzano Tomatoes', 'Mozzarella', 'Basil'], variants: [{ id: 'v7', name: 'Regular (10")', price: 349 }, { id: 'v8', name: 'Large (14")', price: 499 }], addons: [{ id: 'a8', name: 'Extra Cheese', price: 69, isVeg: true }] },
+      { id: 'prod_10', categoryId: 'cat_4', categoryName: 'Pizzas', name: 'BBQ Chicken Pizza', description: 'Smoky BBQ sauce, shredded chicken, caramelized onions.', price: 499, image: 'https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=600&q=80', isVeg: false, isBestseller: false, isChefSpecial: false, isAvailable: true, preparationTimeMinutes: 18, spiceLevel: 1, portionSize: '10 inch', ingredients: ['Pizza Dough', 'BBQ Sauce', 'Chicken', 'Onions', 'Mozzarella'], variants: [{ id: 'v9', name: 'Regular (10")', price: 499 }, { id: 'v10', name: 'Large (14")', price: 699 }] },
+      // Burgers
+      { id: 'prod_11', categoryId: 'cat_5', categoryName: 'Burgers', name: 'Classic Smash Burger', description: 'Double smashed patties, American cheese, caramelized onions, special sauce.', price: 399, image: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=600&q=80', isVeg: false, isBestseller: true, isChefSpecial: false, isAvailable: true, preparationTimeMinutes: 15, spiceLevel: 1, portionSize: 'Serves 1', ingredients: ['Beef Patties', 'American Cheese', 'Onions', 'Pickles', 'Brioche Bun'], addons: [{ id: 'a9', name: 'Truffle Fries', price: 99, isVeg: true }] },
+      { id: 'prod_12', categoryId: 'cat_5', categoryName: 'Burgers', name: 'Truffle Veggie Burger', description: 'Crispy chickpea-quinoa patty, truffle aioli, arugula.', price: 349, image: 'https://images.unsplash.com/photo-1550547660-d9450f859349?w=600&q=80', isVeg: true, isBestseller: false, isChefSpecial: true, isAvailable: true, preparationTimeMinutes: 15, spiceLevel: 1, portionSize: 'Serves 1', ingredients: ['Chickpea Patty', 'Quinoa', 'Truffle Aioli', 'Arugula', 'Tomato'] },
+      // Desserts
+      { id: 'prod_13', categoryId: 'cat_6', categoryName: 'Desserts', name: 'Classic Tiramisu', description: 'Layers of espresso-soaked ladyfingers and mascarpone cream.', price: 349, image: 'https://images.unsplash.com/photo-1571877227200-a0d98ea607e9?w=600&q=80', isVeg: true, isBestseller: true, isChefSpecial: false, isAvailable: true, preparationTimeMinutes: 5, spiceLevel: 0, portionSize: '1 slice', ingredients: ['Ladyfingers', 'Mascarpone', 'Espresso', 'Cocoa'] },
+      { id: 'prod_14', categoryId: 'cat_6', categoryName: 'Desserts', name: 'Molten Chocolate Lava', description: 'Warm chocolate cake with flowing centre, vanilla ice cream.', price: 329, image: 'https://images.unsplash.com/photo-1624353365286-3f8d62daad51?w=600&q=80', isVeg: true, isBestseller: false, isChefSpecial: true, isAvailable: true, preparationTimeMinutes: 12, spiceLevel: 0, portionSize: '1 cake + scoop', ingredients: ['Dark Chocolate', 'Butter', 'Eggs', 'Vanilla Ice Cream'] },
+      // Beverages
+      { id: 'prod_15', categoryId: 'cat_7', categoryName: 'Beverages', name: 'Iced Hazelnut Latte', description: 'Double-shot espresso, hazelnut syrup, cold milk, ice.', price: 249, image: 'https://images.unsplash.com/photo-1461023058943-07fcbe16d735?w=600&q=80', isVeg: true, isBestseller: true, isChefSpecial: false, isAvailable: true, preparationTimeMinutes: 5, spiceLevel: 0, portionSize: '350 ml', ingredients: ['Espresso', 'Hazelnut Syrup', 'Milk', 'Ice'], variants: [{ id: 'v11', name: 'Regular', price: 249 }, { id: 'v12', name: 'Large', price: 329 }] },
+      { id: 'prod_16', categoryId: 'cat_7', categoryName: 'Beverages', name: 'Mango Lassi', description: 'Thick Alphonso mango purée with yogurt, cardamom.', price: 199, image: 'https://images.unsplash.com/photo-1527661591475-527312dd65f5?w=600&q=80', isVeg: true, isBestseller: false, isChefSpecial: false, isAvailable: true, preparationTimeMinutes: 5, spiceLevel: 0, portionSize: '300 ml', ingredients: ['Yogurt', 'Alphonso Mango', 'Sugar', 'Cardamom'] },
+      { id: 'prod_17', categoryId: 'cat_7', categoryName: 'Beverages', name: 'Virgin Mojito', description: 'Fresh mint, lime, sugar, soda.', price: 179, image: 'https://images.unsplash.com/photo-1551538827-9c037cb4f32a?w=600&q=80', isVeg: true, isBestseller: false, isChefSpecial: false, isAvailable: true, preparationTimeMinutes: 5, spiceLevel: 0, portionSize: '350 ml', ingredients: ['Fresh Mint', 'Lime', 'Sugar', 'Soda'], variants: [{ id: 'v13', name: 'Classic', price: 179 }, { id: 'v14', name: 'Watermelon', price: 209 }] },
+    ];
+    productsData.forEach(p => this.products.set(p.id, p));
+
+    // Tables
+    for (let i = 1; i <= 12; i++) {
+      const num = i.toString().padStart(2, '0');
+      this.tables.set(`table_${num}`, {
+        id: `table_${num}`,
+        tableNumber: num,
+        name: `Table ${num}`,
+        capacity: i <= 3 ? 2 : i <= 6 ? 4 : i <= 9 ? 6 : 8,
+        status: 'available',
+        qrCode: '', // Will be generated on demand
+      });
+    }
+
+    // Coupons
+    const couponsData: Coupon[] = [
+      { id: 'coupon_1', code: 'WELCOME20', description: '20% off on first order', discountType: 'percentage', discountValue: 20, minOrderValue: 500, maxDiscountAmount: 200, isActive: true, expiryDate: '2027-12-31' },
+      { id: 'coupon_2', code: 'FLAT100', description: '₹100 off on orders above ₹799', discountType: 'fixed', discountValue: 100, minOrderValue: 799, isActive: true, expiryDate: '2027-12-31' },
+      { id: 'coupon_3', code: 'URBAN30', description: '30% off (max ₹300) on orders above ₹1000', discountType: 'percentage', discountValue: 30, minOrderValue: 1000, maxDiscountAmount: 300, isActive: true, expiryDate: '2027-12-31' },
+    ];
+    couponsData.forEach(c => this.coupons.set(c.code, c));
+
+    // Sample Orders
+    const sampleOrders: Order[] = [
+      {
+        id: 'order_demo_1',
+        orderNumber: 'ORD-L4A7X2K9',
+        restaurantId: 'rest_001',
+        tableId: 'table_02',
+        tableNumber: '02',
+        customerName: 'Arjun Mehta',
+        items: [{ id: 'oi_1', productId: 'prod_5', productName: 'Butter Chicken', productImage: 'https://images.unsplash.com/photo-1603894584373-5ac82b2ae398?w=600&q=80', isVeg: false, unitPrice: 399, quantity: 1, subtotal: 399 }],
+        subtotal: 399,
+        discountAmount: 0,
+        taxAmount: 20,
+        serviceChargeAmount: 20,
+        totalAmount: 439,
+        paymentMethod: 'pay_at_counter',
+        paymentStatus: 'pending',
+        status: 'preparing',
+        createdAt: Date.now() - 15 * 60000,
+        updatedAt: Date.now() - 10 * 60000,
+        estimatedPrepMinutes: 25,
+      },
+      {
+        id: 'order_demo_2',
+        orderNumber: 'ORD-M8B2P5Q1',
+        restaurantId: 'rest_001',
+        tableId: 'table_04',
+        tableNumber: '04',
+        customerName: 'Priya Sharma',
+        items: [{ id: 'oi_2', productId: 'prod_6', productName: 'Truffle Alfredo Pasta', productImage: 'https://images.unsplash.com/photo-1645112411341-6c4fd023714a?w=600&q=80', isVeg: true, unitPrice: 449, quantity: 2, subtotal: 898 }],
+        subtotal: 898,
+        discountAmount: 90,
+        couponCode: 'WELCOME20',
+        taxAmount: 40,
+        serviceChargeAmount: 40,
+        totalAmount: 888,
+        paymentMethod: 'razorpay',
+        paymentStatus: 'paid',
+        status: 'ready',
+        createdAt: Date.now() - 35 * 60000,
+        updatedAt: Date.now() - 5 * 60000,
+        estimatedPrepMinutes: 20,
+        readyAt: Date.now() - 5 * 60000,
+      },
+    ];
+    sampleOrders.forEach(o => this.orders.set(o.id, o));
+  }
+
+  // Subscription for real-time updates
+  subscribe(eventName: string | null, callback: (event: string, data: any) => void): () => void {
+    const wrappedCallback = (event: string, data: any) => {
+      if (eventName === null || eventName === event) {
+        callback(event, data);
       }
-    });
+    };
+    this.subscribers.add(wrappedCallback);
+    return () => this.subscribers.delete(wrappedCallback);
   }
 
-  // ─── Restaurant Settings ──────────────────────────────────────
-  public getRestaurant(): RestaurantSettings {
+  private emit(event: string, data: any) {
+    this.subscribers.forEach(cb => cb(event, data));
+  }
+
+  // Restaurant
+  getRestaurant(): RestaurantSettings | null {
     return this.restaurant;
   }
 
-  public updateRestaurant(data: Partial<RestaurantSettings>): RestaurantSettings {
-    this.restaurant = { ...this.restaurant, ...data };
-    return this.restaurant;
-  }
-
-  // ─── Categories ───────────────────────────────────────────────
-  public getCategories(): Category[] {
-    return this.categories
-      .map((c) => ({
-        ...c,
-        itemCount: this.products.filter((p) => p.categoryId === c.id).length,
-      }))
-      .sort((a, b) => a.displayOrder - b.displayOrder);
-  }
-
-  public getCategory(id: string): Category | undefined {
-    return this.categories.find((c) => c.id === id);
-  }
-
-  public createCategory(data: Omit<Category, "id">): Category {
-    const id = `cat_${Date.now()}`;
-    const newCategory: Category = { id, ...data };
-    this.categories.push(newCategory);
-    return newCategory;
-  }
-
-  public updateCategory(id: string, data: Partial<Category>): Category | null {
-    const idx = this.categories.findIndex((c) => c.id === id);
-    if (idx === -1) return null;
-    this.categories[idx] = { ...this.categories[idx], ...data };
-    return this.categories[idx];
-  }
-
-  public deleteCategory(id: string): boolean {
-    const initialLen = this.categories.length;
-    this.categories = this.categories.filter((c) => c.id !== id);
-    return this.categories.length < initialLen;
-  }
-
-  // ─── Products ─────────────────────────────────────────────────
-  public getProducts(categoryId?: string): Product[] {
-    let list = this.products;
-    if (categoryId && categoryId !== "all") {
-      list = list.filter((p) => p.categoryId === categoryId);
+  updateRestaurant(updates: Partial<RestaurantSettings>): RestaurantSettings | null {
+    if (this.restaurant) {
+      this.restaurant = { ...this.restaurant, ...updates };
+      return this.restaurant;
     }
-    return list;
+    return null;
   }
 
-  public getProduct(id: string): Product | undefined {
-    return this.products.find((p) => p.id === id);
+  // Categories
+  getCategories(): Category[] {
+    return Array.from(this.categories.values()).sort((a, b) => a.displayOrder - b.displayOrder);
   }
 
-  public createProduct(data: Omit<Product, "id">): Product {
-    const id = `prod_${Date.now()}`;
-    const category = this.categories.find((c) => c.id === data.categoryId);
-    const newProd: Product = {
-      id,
-      ...data,
-      categoryName: category ? category.name : "Specials",
-    };
-    this.products.push(newProd);
-    return newProd;
+  getCategory(id: string): Category | undefined {
+    return this.categories.get(id);
   }
 
-  public updateProduct(id: string, data: Partial<Product>): Product | null {
-    const idx = this.products.findIndex((p) => p.id === id);
-    if (idx === -1) return null;
-    this.products[idx] = { ...this.products[idx], ...data };
-    return this.products[idx];
+  // Products
+  getProducts(): Product[] {
+    return Array.from(this.products.values());
   }
 
-  public toggleProductAvailability(id: string): Product | null {
-    const prod = this.products.find((p) => p.id === id);
-    if (!prod) return null;
-    prod.isAvailable = !prod.isAvailable;
-    return prod;
+  getProduct(id: string): Product | undefined {
+    return this.products.get(id);
   }
 
-  public deleteProduct(id: string): boolean {
-    const initialLen = this.products.length;
-    this.products = this.products.filter((p) => p.id !== id);
-    return this.products.length < initialLen;
+  getProductsByCategory(categoryId: string): Product[] {
+    return Array.from(this.products.values()).filter(p => p.categoryId === categoryId);
   }
 
-  // ─── Tables ───────────────────────────────────────────────────
-  public getTables(): Table[] {
-    this.syncTableOccupancy();
-    return this.tables;
+  updateProduct(id: string, updates: Partial<Product>): Product | null {
+    const product = this.products.get(id);
+    if (product) {
+      const updated = { ...product, ...updates };
+      this.products.set(id, updated);
+      this.emit('PRODUCT_UPDATED', updated);
+      return updated;
+    }
+    return null;
   }
 
-  public getTable(idOrNumber: string): Table | undefined {
-    return this.tables.find(
-      (t) =>
-        t.id === idOrNumber ||
-        t.tableNumber === idOrNumber ||
-        t.qrToken === idOrNumber
+  // Tables
+  getTables(): Table[] {
+    return Array.from(this.tables.values());
+  }
+
+  getTable(id: string): Table | undefined {
+    return this.tables.get(id);
+  }
+
+  getTableByNumber(tableNumber: string): Table | undefined {
+    return Array.from(this.tables.values()).find(t => t.tableNumber === tableNumber);
+  }
+
+  updateTableStatus(tableId: string, status: Table['status'], orderId?: string): Table | null {
+    const table = this.tables.get(tableId);
+    if (table) {
+      const updated = { ...table, status, activeOrderId: orderId };
+      this.tables.set(tableId, updated);
+      this.emit('TABLE_UPDATED', updated);
+      return updated;
+    }
+    return null;
+  }
+
+  // Coupons
+  getCoupon(code: string): Coupon | undefined {
+    return this.coupons.get(code.toUpperCase());
+  }
+
+  getAllCoupons(): Coupon[] {
+    return Array.from(this.coupons.values());
+  }
+
+  // Orders
+  getOrders(): Order[] {
+    return Array.from(this.orders.values()).sort((a, b) =>
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
   }
 
-  public createTable(tableNumber: string, capacity: number = 4): Table {
-    const id = `table_${tableNumber}`;
-    const newTable: Table = {
-      id,
-      tableNumber,
-      name: `Table ${tableNumber}`,
-      capacity,
-      qrToken: generateTableToken(tableNumber),
-      status: "available",
-    };
-    this.tables.push(newTable);
-    return newTable;
+  getOrder(id: string): Order | undefined {
+    return this.orders.get(id);
   }
 
-  public deleteTable(id: string): boolean {
-    const initial = this.tables.length;
-    this.tables = this.tables.filter((t) => t.id !== id);
-    return this.tables.length < initial;
+  getOrderById(id: string): Order | undefined {
+    return this.orders.get(id);
   }
 
-  // ─── Coupons ──────────────────────────────────────────────────
-  public getCoupons(): Coupon[] {
-    return this.coupons;
+  getOrderByNumber(orderNumber: string): Order | undefined {
+    return Array.from(this.orders.values()).find(o => o.orderNumber === orderNumber);
   }
 
-  public validateCoupon(code: string, subtotal: number) {
-    const normalized = code.trim().toUpperCase();
-    const coupon = this.coupons.find((c) => c.code.toUpperCase() === normalized);
-
-    if (!coupon || !coupon.isActive) {
-      return { valid: false, error: "Invalid coupon code" };
-    }
-
-    if (subtotal < coupon.minOrderValue) {
-      return {
-        valid: false,
-        error: `Minimum order value of ₹${coupon.minOrderValue} required for this coupon`,
-      };
-    }
-
-    let discount = 0;
-    if (coupon.discountType === "percentage") {
-      discount = Math.round((subtotal * coupon.discountValue) / 100);
-      if (coupon.maxDiscountAmount && discount > coupon.maxDiscountAmount) {
-        discount = coupon.maxDiscountAmount;
-      }
-    } else {
-      discount = coupon.discountValue;
-    }
-
-    return {
-      valid: true,
-      coupon,
-      discount,
-    };
+  getActiveOrders(): Order[] {
+    return Array.from(this.orders.values()).filter(o =>
+      !['completed', 'cancelled', 'served'].includes(o.status)
+    ).sort((a, b) => a.createdAt - b.createdAt);
   }
 
-  // ─── Orders ───────────────────────────────────────────────────
-  public getOrders(): Order[] {
-    return [...this.orders].sort(
-      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    );
+  updateOrder(orderId: string, updates: Partial<Order>): Order | null {
+    const order = this.orders.get(orderId);
+    if (!order) return null;
+
+    const updated = { ...order, ...updates, updatedAt: Date.now() };
+    this.orders.set(orderId, updated);
+    this.emit('ORDER_UPDATED', updated);
+    return updated;
   }
 
-  public getOrder(id: string): Order | undefined {
-    return this.orders.find((o) => o.id === id || o.orderNumber === id);
-  }
-
-  public getOrdersForTable(tableNumber: string): Order[] {
-    return this.orders.filter((o) => o.tableNumber === tableNumber);
-  }
-
-  /**
-   * Secure Server-side price recalculation & order creation
-   */
-  public createOrder(input: {
+  createOrder(data: {
     tableNumber: string;
     customerName: string;
     customerPhone?: string;
-    items: {
-      productId: string;
-      quantity: number;
-      variantId?: string;
-      addonIds?: string[];
-      spiceLevel?: 0 | 1 | 2 | 3;
-      specialInstructions?: string;
-    }[];
+    items: any[];
     couponCode?: string;
-    paymentMethod: "razorpay" | "pay_at_counter" | "upi";
+    paymentMethod: string;
+    paymentStatus?: any;
     specialInstructions?: string;
   }): Order {
-    const table = this.tables.find((t) => t.tableNumber === input.tableNumber);
-    if (!table) {
-      throw new Error(`Table ${input.tableNumber} does not exist`);
-    }
+    const table = this.getTableByNumber(data.tableNumber);
+    const restaurant = this.getRestaurant();
+    const taxRate = restaurant?.taxRatePercent || 5;
+    const serviceRate = restaurant?.isServiceChargeEnabled ? (restaurant.serviceChargePercent || 5) : 0;
 
-    // Server-verified items calculation
-    const orderItems: OrderItem[] = [];
-    let calculatedSubtotal = 0;
-    let maxPrepTime = 15;
-
-    for (const reqItem of input.items) {
-      const product = this.products.find((p) => p.id === reqItem.productId);
-      if (!product) {
-        throw new Error(`Product ${reqItem.productId} not found`);
-      }
-      if (!product.isAvailable) {
-        throw new Error(`Dish "${product.name}" is currently sold out`);
-      }
+    // Calculate prices
+    let subtotal = 0;
+    const orderItems = data.items.map(item => {
+      const product = this.products.get(item.productId);
+      if (!product) throw new Error(`Product ${item.productId} not found`);
 
       let unitPrice = product.price;
-      const selectedVariant = product.variants?.find((v) => v.id === reqItem.variantId);
-      if (selectedVariant) {
-        unitPrice = selectedVariant.price;
+      if (item.variantId && product.variants) {
+        const variant = product.variants.find(v => v.id === item.variantId);
+        if (variant) unitPrice = variant.price;
+      }
+      if (item.addonIds && item.addonIds.length > 0 && product.addons) {
+        product.addons.forEach(addon => {
+          if (item.addonIds.includes(addon.id)) unitPrice += addon.price;
+        });
       }
 
-      const selectedAddons =
-        product.addons?.filter((a) => reqItem.addonIds?.includes(a.id)) || [];
-      const addonsPrice = selectedAddons.reduce((sum, a) => sum + a.price, 0);
-      unitPrice += addonsPrice;
+      subtotal += unitPrice * item.quantity;
 
-      const itemSubtotal = unitPrice * reqItem.quantity;
-      calculatedSubtotal += itemSubtotal;
-
-      if (product.preparationTimeMinutes > maxPrepTime) {
-        maxPrepTime = product.preparationTimeMinutes;
-      }
-
-      orderItems.push({
-        id: `oi_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+      return {
+        id: `oi_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         productId: product.id,
         productName: product.name,
         productImage: product.image,
         isVeg: product.isVeg,
         unitPrice,
-        quantity: reqItem.quantity,
-        subtotal: itemSubtotal,
-        customization: {
-          selectedVariant,
-          selectedAddons,
-          spiceLevel: reqItem.spiceLevel,
-          specialInstructions: reqItem.specialInstructions,
-        },
-      });
-    }
+        quantity: item.quantity,
+        subtotal: unitPrice * item.quantity,
+        customization: item.customization,
+      };
+    });
 
-    // Coupon validation
-    let coupon: Coupon | null = null;
-    if (input.couponCode) {
-      const validation = this.validateCoupon(input.couponCode, calculatedSubtotal);
-      if (validation.valid && validation.coupon) {
-        coupon = validation.coupon;
+    // Apply coupon
+    let discountAmount = 0;
+    if (data.couponCode) {
+      const coupon = this.getCoupon(data.couponCode);
+      if (coupon && coupon.isActive && subtotal >= coupon.minOrderValue) {
+        if (coupon.discountType === 'percentage') {
+          discountAmount = Math.min(
+            (subtotal * coupon.discountValue) / 100,
+            coupon.maxDiscountAmount || Infinity
+          );
+        } else {
+          discountAmount = coupon.discountValue;
+        }
       }
     }
 
-    const pricing = calculateOrderPricing(
-      orderItems.map((i) => ({ unitPrice: i.unitPrice, quantity: i.quantity })),
-      coupon,
-      this.restaurant.taxRatePercent,
-      this.restaurant.serviceChargePercent,
-      this.restaurant.isServiceChargeEnabled
-    );
+    const afterDiscount = subtotal - discountAmount;
+    const taxAmount = (afterDiscount * taxRate) / 100;
+    const serviceChargeAmount = (afterDiscount * serviceRate) / 100;
+    const totalAmount = afterDiscount + taxAmount + serviceChargeAmount;
 
-    const now = new Date();
-    const orderId = `order_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
-    const orderNumber = `UP-${this.orderCounter++}`;
-    const estimatedReadyTime = new Date(now.getTime() + maxPrepTime * 60000).toISOString();
-
-    const newOrder: Order = {
-      id: orderId,
-      orderNumber,
-      restaurantId: this.restaurant.id,
-      tableId: table.id,
-      tableNumber: table.tableNumber,
-      customerName: input.customerName.trim() || "Guest",
-      customerPhone: input.customerPhone,
+    const order: Order = {
+      id: `order_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      orderNumber: generateOrderNumber(),
+      restaurantId: 'rest_001',
+      tableId: table?.id || '',
+      tableNumber: data.tableNumber,
+      customerName: data.customerName,
+      customerPhone: data.customerPhone,
       items: orderItems,
-      subtotal: pricing.subtotal,
-      discountAmount: pricing.discountAmount,
-      couponCode: coupon?.code,
-      taxAmount: pricing.taxAmount,
-      serviceChargeAmount: pricing.serviceChargeAmount,
-      totalAmount: pricing.totalAmount,
-      paymentMethod: input.paymentMethod,
-      paymentStatus: input.paymentMethod === "razorpay" ? "pending" : "pending",
-      status: "placed",
-      specialInstructions: input.specialInstructions,
-      createdAt: now.toISOString(),
-      updatedAt: now.toISOString(),
-      estimatedPrepMinutes: maxPrepTime,
-      estimatedReadyTime,
+      subtotal,
+      discountAmount,
+      couponCode: data.couponCode,
+      taxAmount,
+      serviceChargeAmount,
+      totalAmount,
+      paymentMethod: data.paymentMethod as any,
+      paymentStatus: data.paymentMethod === 'pay_at_counter' ? 'pending' : 'pending',
+      status: 'placed',
+      specialInstructions: data.specialInstructions,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      estimatedPrepMinutes: restaurant?.estimatedPrepTimeMinutes || 20,
     };
 
-    this.orders.unshift(newOrder);
+    this.orders.set(order.id, order);
 
-    // Update table
-    table.status = "occupied";
-    table.activeOrderId = newOrder.id;
-    table.currentBill = newOrder.totalAmount;
-
-    return newOrder;
-  }
-
-  public updateOrderStatus(
-    orderId: string,
-    status: OrderStatus,
-    rejectionReason?: string
-  ): Order | null {
-    const order = this.orders.find((o) => o.id === orderId);
-    if (!order) return null;
-
-    order.status = status;
-    order.updatedAt = new Date().toISOString();
-    if (rejectionReason) {
-      order.rejectionReason = rejectionReason;
+    // Update table status
+    if (table) {
+      this.updateTableStatus(table.id, 'occupied', order.id);
     }
 
-    if (status === "completed" || status === "cancelled" || status === "rejected") {
-      const table = this.tables.find((t) => t.id === order.tableId);
-      if (table && table.activeOrderId === order.id) {
-        table.status = "available";
-        table.activeOrderId = undefined;
-        table.currentBill = 0;
-      }
-    } else if (status === "served") {
-      const table = this.tables.find((t) => t.id === order.tableId);
-      if (table) {
-        table.status = "billing";
-      }
-    }
-
+    this.emit('ORDER_CREATED', order);
     return order;
   }
 
-  public updateOrderPayment(
-    orderId: string,
-    paymentStatus: PaymentStatus,
-    paymentId?: string,
-    razorpayOrderId?: string
-  ): Order | null {
-    const order = this.orders.find((o) => o.id === orderId);
+  updateOrderStatus(orderId: string, status: OrderStatus, rejectionReason?: string): Order | null {
+    const order = this.orders.get(orderId);
     if (!order) return null;
 
-    order.paymentStatus = paymentStatus;
-    if (paymentId) order.razorpayPaymentId = paymentId;
-    if (razorpayOrderId) order.razorpayOrderId = razorpayOrderId;
-    order.updatedAt = new Date().toISOString();
+    const updated: Order = {
+      ...order,
+      status,
+      updatedAt: Date.now(),
+      ...(rejectionReason && { rejectionReason }),
+      ...(status === 'ready' && { readyAt: Date.now() }),
+      ...(status === 'completed' && { completedAt: Date.now() }),
+    };
 
-    return order;
+    // Handle table status updates
+    const table = this.tables.get(order.tableId);
+    if (table) {
+      if (['completed', 'cancelled'].includes(status)) {
+        this.updateTableStatus(table.id, 'available');
+      } else if (status === 'served') {
+        this.updateTableStatus(table.id, 'billing');
+      }
+    }
+
+    this.orders.set(orderId, updated);
+    this.emit('ORDER_STATUS_UPDATED', updated);
+    return updated;
   }
 
-  // ─── Analytics ────────────────────────────────────────────────
-  public getAnalytics(): DashboardAnalytics {
-    const completedOrActive = this.orders.filter(
-      (o) => o.status !== "rejected" && o.status !== "cancelled"
-    );
+  updatePaymentStatus(orderId: string, paymentStatus: Order['paymentStatus'], razorpayOrderId?: string, razorpayPaymentId?: string): Order | null {
+    const order = this.orders.get(orderId);
+    if (!order) return null;
 
-    const todaySales = completedOrActive.reduce((sum, o) => sum + o.totalAmount, 0);
-    const todayOrdersCount = this.orders.length;
-    const activeOrdersCount = this.orders.filter((o) =>
-      ["placed", "accepted", "preparing", "ready"].includes(o.status)
-    ).length;
-    const completedOrdersCount = this.orders.filter((o) =>
-      ["served", "completed"].includes(o.status)
-    ).length;
-    const pendingOrdersCount = this.orders.filter((o) => o.status === "placed").length;
-    const averageOrderValue =
-      completedOrActive.length > 0 ? Math.round(todaySales / completedOrActive.length) : 0;
+    const updated: Order = {
+      ...order,
+      paymentStatus,
+      updatedAt: Date.now(),
+      ...(razorpayOrderId && { razorpayOrderId }),
+      ...(razorpayPaymentId && { razorpayPaymentId }),
+    };
 
-    // Item popularity count
-    const itemMap = new Map<string, { count: number; revenue: number }>();
-    this.orders.forEach((o) => {
-      o.items.forEach((item) => {
-        const existing = itemMap.get(item.productId) || { count: 0, revenue: 0 };
-        itemMap.set(item.productId, {
-          count: existing.count + item.quantity,
-          revenue: existing.revenue + item.subtotal,
-        });
+    this.orders.set(orderId, updated);
+    this.emit('PAYMENT_UPDATED', updated);
+    return updated;
+  }
+
+  // Analytics
+  getAnalytics(): DashboardAnalytics {
+    const orders = this.getOrders();
+    const tables = this.getTables();
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const todayOrders = orders.filter(o => new Date(o.createdAt) >= today);
+    const completedOrders = todayOrders.filter(o => o.status === 'completed' || o.status === 'served');
+    const activeOrders = todayOrders.filter(o => !['completed', 'cancelled', 'served'].includes(o.status));
+
+    const todaySales = completedOrders.reduce((sum, o) => sum + o.totalAmount, 0);
+    const averageOrderValue = completedOrders.length > 0 ? todaySales / completedOrders.length : 0;
+
+    // Calculate hourly sales
+    const hourlyData: { [key: string]: { sales: number; orders: number } } = {};
+    for (let i = 11; i <= 23; i++) {
+      hourlyData[`${i}:00`] = { sales: 0, orders: 0 };
+    }
+    todayOrders.forEach(o => {
+      const hour = new Date(o.createdAt).getHours();
+      if (hour >= 11 && hour <= 23) {
+        const key = `${hour}:00`;
+        if (hourlyData[key]) {
+          hourlyData[key].sales += o.totalAmount;
+          hourlyData[key].orders += 1;
+        }
+      }
+    });
+
+    // Calculate category breakdown
+    const categorySales: { [key: string]: number } = {};
+    todayOrders.forEach(order => {
+      order.items.forEach(item => {
+        const product = this.products.get(item.productId);
+        if (product) {
+          categorySales[product.categoryName || 'Other'] = (categorySales[product.categoryName || 'Other'] || 0) + item.subtotal;
+        }
       });
     });
 
-    const bestsellers = Array.from(itemMap.entries())
-      .map(([prodId, stats]) => {
-        const prod = this.products.find((p) => p.id === prodId);
-        return {
-          productId: prodId,
-          productName: prod ? prod.name : "Special Dish",
-          category: prod ? prod.categoryName || "Main" : "Main",
-          count: stats.count,
-          revenue: stats.revenue,
-          image: prod ? prod.image : "",
-        };
-      })
-      .sort((a, b) => b.revenue - a.revenue)
-      .slice(0, 5);
-
-    // Realistic hourly distribution for Indian lunch & dinner peak hours
-    const hourlySales = [
-      { hour: "12 PM", sales: 2450, orders: 3 },
-      { hour: "1 PM", sales: 4890, orders: 5 },
-      { hour: "2 PM", sales: 6120, orders: 7 },
-      { hour: "3 PM", sales: 1840, orders: 2 },
-      { hour: "4 PM", sales: 1250, orders: 2 },
-      { hour: "5 PM", sales: 1980, orders: 3 },
-      { hour: "6 PM", sales: 3450, orders: 4 },
-      { hour: "7 PM", sales: 7890, orders: 9 },
-      { hour: "8 PM", sales: 11240, orders: 13 },
-      { hour: "9 PM", sales: 13650, orders: 16 },
-      { hour: "10 PM", sales: 8450, orders: 9 },
-    ];
-
-    const categoryBreakdown = [
-      { category: "Indian Classics", sales: 18450, percentage: 38 },
-      { category: "Main Course", sales: 12600, percentage: 26 },
-      { category: "Pizzas & Burgers", sales: 8900, percentage: 18 },
-      { category: "Starters", sales: 5400, percentage: 11 },
-      { category: "Beverages & Desserts", sales: 3400, percentage: 7 },
-    ];
+    const totalCategorySales = Object.values(categorySales).reduce((a, b) => a + b, 0);
+    const categoryBreakdown = Object.entries(categorySales).map(([category, sales]) => ({
+      category,
+      sales,
+      percentage: totalCategorySales > 0 ? Math.round((sales / totalCategorySales) * 100) : 0,
+    }));
 
     return {
       todaySales,
-      todayOrdersCount,
-      activeOrdersCount,
-      completedOrdersCount,
-      pendingOrdersCount,
+      todayOrdersCount: todayOrders.length,
+      activeOrdersCount: activeOrders.length,
+      completedOrdersCount: completedOrders.length,
+      pendingOrdersCount: todayOrders.filter(o => o.paymentStatus === 'pending').length,
       averageOrderValue,
-      salesGrowthPercent: 18.4,
-      ordersGrowthPercent: 12.5,
-      bestsellers,
-      hourlySales,
-      recentOrders: this.getOrders().slice(0, 8),
+      salesGrowthPercent: 12.5,
+      ordersGrowthPercent: 8.3,
+      hourlySales: Object.entries(hourlyData).map(([hour, data]) => ({ hour, ...data })),
       categoryBreakdown,
     };
   }
-
-  // ─── Reset / Seed Demo ────────────────────────────────────────
-  public resetToDemo() {
-    this.restaurant = { ...RESTAURANT };
-    this.categories = JSON.parse(JSON.stringify(CATEGORIES));
-    this.products = JSON.parse(JSON.stringify(PRODUCTS));
-    this.tables = JSON.parse(JSON.stringify(TABLES));
-    this.orders = JSON.parse(JSON.stringify(SAMPLE_ORDERS));
-    this.coupons = JSON.parse(JSON.stringify(COUPONS));
-    this.syncTableOccupancy();
-  }
 }
 
-// Global singleton across hot reloads in development
-const globalForDb = global as unknown as { restaurantDb: RestaurantDatabase };
-
-export const db = globalForDb.restaurantDb || new RestaurantDatabase();
-
-if (process.env.NODE_ENV !== "production") {
-  globalForDb.restaurantDb = db;
-}
+// Singleton instance
+export const store = new Database();

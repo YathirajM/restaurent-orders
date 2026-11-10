@@ -1,497 +1,299 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import Link from "next/link";
-import { Order, OrderStatus } from "@/lib/types";
-import { formatTime, getElapsedMinutes } from "@/lib/utils";
-import { realtime } from "@/lib/realtime";
-import { playNewOrderSound, playStatusUpdateSound } from "@/lib/sound";
-import {
-  ChefHat,
-  Clock,
-  Volume2,
-  VolumeX,
-  RefreshCw,
-  ArrowRight,
-  CheckCircle2,
-  AlertTriangle,
-  Flame,
-  LayoutDashboard,
-  Utensils,
-  Layers,
-} from "lucide-react";
+import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { store } from '@/lib/store';
+import { formatTime } from '@/lib/utils';
+import type { Order, OrderStatus } from '@/lib/types';
 
-export default function KitchenDisplayPage() {
+export default function KDSPage() {
+  const searchParams = useSearchParams();
+  const secret = searchParams.get('secret');
+
   const [orders, setOrders] = useState<Order[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [soundEnabled, setSoundEnabled] = useState(true);
-  const [activeFilter, setActiveFilter] = useState<"all" | "veg" | "urgent">("all");
-  const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
+  const [filter, setFilter] = useState<'all' | 'active' | 'completed'>('active');
 
-  const fetchOrders = async () => {
-    try {
-      const res = await fetch("/api/orders");
-      const data = await res.json();
-      if (data.success && data.data) {
-        setOrders(data.data);
-        setLastRefreshed(new Date());
-      }
-    } catch (err) {
-      console.error("KDS failed to fetch orders", err);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  // Simple auth check (in production, use proper auth)
+  if (secret !== 'kds123') {
+    return (
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+        <div className="text-white text-center">
+          <h1 className="text-2xl font-bold mb-4">Kitchen Display System</h1>
+          <p className="text-gray-400">Access Restricted</p>
+          <p className="text-sm text-gray-500 mt-2">Add ?secret=kds123 to URL</p>
+        </div>
+      </div>
+    );
+  }
 
   useEffect(() => {
-    fetchOrders();
+    const loadOrders = () => {
+      const allOrders = store.getOrders();
+      // Show placed, accepted, preparing orders
+      const activeOrders = allOrders.filter(o =>
+        ['placed', 'accepted', 'preparing'].includes(o.status)
+      ).sort((a, b) => a.createdAt - b.createdAt);
+      setOrders(activeOrders);
+    };
 
-    // Listen for new orders and status updates
-    const unsubNew = realtime.subscribe("ORDER_CREATED", (newOrder: Order) => {
-      setOrders((prev) => [newOrder, ...prev.filter((o) => o.id !== newOrder.id)]);
-      if (soundEnabled) {
-        playNewOrderSound();
-      }
-    });
+    loadOrders();
+    const unsubscribe = store.subscribe(null, loadOrders);
 
-    const unsubUpdate = realtime.subscribe("ORDER_STATUS_UPDATED", (updatedOrder: Order) => {
-      setOrders((prev) =>
-        prev.map((o) => (o.id === updatedOrder.id ? updatedOrder : o))
-      );
-    });
-
-    // Auto polling interval every 3 seconds to guarantee sync
-    const interval = setInterval(fetchOrders, 3000);
+    // Refresh every 30 seconds even without updates
+    const interval = setInterval(loadOrders, 30000);
 
     return () => {
-      unsubNew();
-      unsubUpdate();
+      unsubscribe();
       clearInterval(interval);
     };
-  }, [soundEnabled]);
+  }, []);
 
-  const updateStatus = async (orderId: string, nextStatus: OrderStatus) => {
-    try {
-      // Try with order ID first, fallback to order number
-      let res = await fetch(`/api/orders/${orderId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: nextStatus }),
-      });
-
-      // If order not found, try searching by order number
-      if (!res.ok) {
-        const allRes = await fetch("/api/orders");
-        const allData = await allRes.json();
-        if (allData.success && allData.data) {
-          const order = allData.data.find((o: Order) => o.orderNumber === orderId || o.id === orderId);
-          if (order) {
-            res = await fetch(`/api/orders/${order.id}`, {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ status: nextStatus }),
-            });
-          }
-        }
-      }
-
-      const data = await res.json();
-      if (data.success && data.data) {
-        setOrders((prev) =>
-          prev.map((o) => (o.id === data.data.id ? data.data : o))
-        );
-        realtime.emit("ORDER_STATUS_UPDATED", data.data);
-        playStatusUpdateSound();
-      } else {
-        console.error("Failed to update order:", data.error);
-      }
-    } catch (err) {
-      console.error("Failed to update status", err);
-    }
+  const updateOrderStatus = (orderId: string, status: OrderStatus) => {
+    store.updateOrder(orderId, { status });
   };
 
-  // Filter orders by column
-  const newOrders = orders.filter((o) => o.status === "placed");
-  const acceptedOrders = orders.filter((o) => o.status === "accepted");
-  const preparingOrders = orders.filter((o) => o.status === "preparing");
-  const readyOrders = orders.filter((o) => o.status === "ready");
+  const getTimeSinceOrder = (createdAt: number) => {
+    const mins = Math.floor((Date.now() - createdAt) / 60000);
+    if (mins < 1) return 'Just now';
+    if (mins === 1) return '1 min';
+    return `${mins} mins`;
+  };
 
-  const totalActiveTickets =
-    newOrders.length + acceptedOrders.length + preparingOrders.length + readyOrders.length;
+  const filteredOrders = orders.filter(o => {
+    if (filter === 'active') return ['placed', 'accepted', 'preparing'].includes(o.status);
+    if (filter === 'completed') return o.status === 'completed';
+    return true;
+  });
+
+  // Group by status
+  const placedOrders = filteredOrders.filter(o => o.status === 'placed' || o.status === 'accepted');
+  const preparingOrders = filteredOrders.filter(o => o.status === 'preparing');
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col font-sans selection:bg-amber-500 selection:text-black">
-      {/* KDS Header Bar */}
-      <header className="sticky top-0 z-40 border-b border-neutral-800 bg-neutral-900/90 backdrop-blur-md px-4 sm:px-6 py-3">
+    <div className="min-h-screen bg-gray-900 text-white">
+      {/* Header */}
+      <div className="bg-gray-800 border-b border-gray-700 px-6 py-4">
         <div className="flex items-center justify-between">
-          {/* Logo & Title */}
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-orange-500/20 text-orange-400 border border-orange-500/30">
-              <ChefHat className="h-6 w-6" />
+          <h1 className="text-xl font-bold">Kitchen Display</h1>
+          <div className="flex items-center gap-4">
+            <div className="text-sm text-gray-400">
+              {orders.length} active orders
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="font-display text-lg font-black tracking-tight text-white">
-                  The Urban Plate • KDS
-                </h1>
-                <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-bold text-emerald-400 border border-emerald-500/30 animate-pulse">
-                  Live Sync
-                </span>
-              </div>
-              <p className="text-xs text-neutral-400 font-medium">
-                Kitchen Display System • {totalActiveTickets} Active Tickets
-              </p>
-            </div>
-          </div>
-
-          {/* Quick Filters & Controls */}
-          <div className="flex items-center gap-2 sm:gap-3">
-            {/* Sound Toggle */}
-            <button
-              onClick={() => setSoundEnabled(!soundEnabled)}
-              className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold border transition-all ${
-                soundEnabled
-                  ? "bg-neutral-800 text-neutral-200 border-neutral-700 hover:bg-neutral-700"
-                  : "bg-red-500/10 text-red-400 border-red-500/20"
-              }`}
-            >
-              {soundEnabled ? (
-                <>
-                  <Volume2 className="h-4 w-4 text-emerald-400" />
-                  <span className="hidden sm:inline">Chime On</span>
-                </>
-              ) : (
-                <>
-                  <VolumeX className="h-4 w-4" />
-                  <span className="hidden sm:inline">Muted</span>
-                </>
-              )}
-            </button>
-
-            {/* Manual Refresh */}
-            <button
-              onClick={fetchOrders}
-              className="flex h-9 w-9 items-center justify-center rounded-xl bg-neutral-800 border border-neutral-700 hover:bg-neutral-700 text-neutral-300 transition-colors"
-              title="Refresh Tickets"
-            >
-              <RefreshCw className="h-4 w-4" />
-            </button>
-
-            {/* Switch to Admin Dashboard */}
-            <Link
-              href="/admin"
-              className="flex items-center gap-1.5 rounded-xl bg-blue-600/20 border border-blue-500/30 px-3 py-1.5 text-xs font-bold text-blue-400 hover:bg-blue-600/30 transition-colors"
-            >
-              <LayoutDashboard className="h-3.5 w-3.5" />
-              <span className="hidden md:inline">Admin SaaS</span>
-            </Link>
-
-            {/* Customer Menu Link */}
-            <Link
-              href="/menu"
-              className="flex items-center gap-1.5 rounded-xl bg-amber-500/20 border border-amber-500/30 px-3 py-1.5 text-xs font-bold text-amber-400 hover:bg-amber-500/30 transition-colors"
-            >
-              <Utensils className="h-3.5 w-3.5" />
-              <span className="hidden md:inline">Menu View</span>
-            </Link>
-          </div>
-        </div>
-      </header>
-
-      {/* 4 Kanban Columns */}
-      <main className="flex-1 p-4 sm:p-6 overflow-x-auto">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5 min-w-[320px]">
-          {/* Column 1: New Orders */}
-          <div className="flex flex-col rounded-3xl bg-neutral-900/80 border border-neutral-800 p-4 shadow-xl">
-            <div className="flex items-center justify-between pb-3 border-b border-neutral-800 mb-4">
-              <div className="flex items-center gap-2">
-                <span className="h-3 w-3 rounded-full bg-red-500 animate-ping" />
-                <h2 className="font-display font-bold text-sm tracking-wide uppercase text-white">
-                  New Incoming
-                </h2>
-              </div>
-              <span className="rounded-full bg-red-500/20 border border-red-500/30 px-2.5 py-0.5 text-xs font-black text-red-400">
-                {newOrders.length}
-              </span>
-            </div>
-
-            <div className="flex-1 space-y-3.5 overflow-y-auto no-scrollbar max-h-[calc(100vh-170px)]">
-              {newOrders.length === 0 ? (
-                <div className="flex flex-col items-center justify-center p-8 text-neutral-500 text-center">
-                  <CheckCircle2 className="h-8 w-8 mb-2 opacity-30" />
-                  <p className="text-xs">No pending new orders</p>
-                </div>
-              ) : (
-                newOrders.map((ord) => (
-                  <KDSTicketCard
-                    key={ord.id}
-                    order={ord}
-                    nextActionLabel="Accept Order"
-                    nextStatus="accepted"
-                    onAdvance={() => updateStatus(ord.id, "accepted")}
-                    accentColor="red"
-                  />
-                ))
-              )}
+            <div className="flex gap-2">
+              <button
+                onClick={() => setFilter('active')}
+                className={`px-3 py-1 rounded-lg text-sm ${
+                  filter === 'active' ? 'bg-amber-500 text-white' : 'bg-gray-700'
+                }`}
+              >
+                Active
+              </button>
+              <button
+                onClick={() => setFilter('completed')}
+                className={`px-3 py-1 rounded-lg text-sm ${
+                  filter === 'completed' ? 'bg-green-500 text-white' : 'bg-gray-700'
+                }`}
+              >
+                Done
+              </button>
             </div>
           </div>
-
-          {/* Column 2: Accepted Orders */}
-          <div className="flex flex-col rounded-3xl bg-neutral-900/80 border border-neutral-800 p-4 shadow-xl">
-            <div className="flex items-center justify-between pb-3 border-b border-neutral-800 mb-4">
-              <div className="flex items-center gap-2">
-                <span className="h-3 w-3 rounded-full bg-amber-500" />
-                <h2 className="font-display font-bold text-sm tracking-wide uppercase text-white">
-                  Acknowledged
-                </h2>
-              </div>
-              <span className="rounded-full bg-amber-500/20 border border-amber-500/30 px-2.5 py-0.5 text-xs font-black text-amber-400">
-                {acceptedOrders.length}
-              </span>
-            </div>
-
-            <div className="flex-1 space-y-3.5 overflow-y-auto no-scrollbar max-h-[calc(100vh-170px)]">
-              {acceptedOrders.length === 0 ? (
-                <div className="flex flex-col items-center justify-center p-8 text-neutral-500 text-center">
-                  <p className="text-xs">Queue clear</p>
-                </div>
-              ) : (
-                acceptedOrders.map((ord) => (
-                  <KDSTicketCard
-                    key={ord.id}
-                    order={ord}
-                    nextActionLabel="Start Preparing"
-                    nextStatus="preparing"
-                    onAdvance={() => updateStatus(ord.id, "preparing")}
-                    accentColor="amber"
-                  />
-                ))
-              )}
-            </div>
-          </div>
-
-          {/* Column 3: In Preparation */}
-          <div className="flex flex-col rounded-3xl bg-neutral-900/80 border border-neutral-800 p-4 shadow-xl">
-            <div className="flex items-center justify-between pb-3 border-b border-neutral-800 mb-4">
-              <div className="flex items-center gap-2">
-                <span className="h-3 w-3 rounded-full bg-blue-500 animate-pulse" />
-                <h2 className="font-display font-bold text-sm tracking-wide uppercase text-white">
-                  On The Stove / Prep
-                </h2>
-              </div>
-              <span className="rounded-full bg-blue-500/20 border border-blue-500/30 px-2.5 py-0.5 text-xs font-black text-blue-400">
-                {preparingOrders.length}
-              </span>
-            </div>
-
-            <div className="flex-1 space-y-3.5 overflow-y-auto no-scrollbar max-h-[calc(100vh-170px)]">
-              {preparingOrders.length === 0 ? (
-                <div className="flex flex-col items-center justify-center p-8 text-neutral-500 text-center">
-                  <p className="text-xs">Nothing cooking right now</p>
-                </div>
-              ) : (
-                preparingOrders.map((ord) => (
-                  <KDSTicketCard
-                    key={ord.id}
-                    order={ord}
-                    nextActionLabel="Mark Dish Ready"
-                    nextStatus="ready"
-                    onAdvance={() => updateStatus(ord.id, "ready")}
-                    accentColor="blue"
-                  />
-                ))
-              )}
-            </div>
-          </div>
-
-          {/* Column 4: Ready to Serve */}
-          <div className="flex flex-col rounded-3xl bg-neutral-900/80 border border-neutral-800 p-4 shadow-xl">
-            <div className="flex items-center justify-between pb-3 border-b border-neutral-800 mb-4">
-              <div className="flex items-center gap-2">
-                <span className="h-3 w-3 rounded-full bg-emerald-500" />
-                <h2 className="font-display font-bold text-sm tracking-wide uppercase text-white">
-                  Ready for Pickup
-                </h2>
-              </div>
-              <span className="rounded-full bg-emerald-500/20 border border-emerald-500/30 px-2.5 py-0.5 text-xs font-black text-emerald-400">
-                {readyOrders.length}
-              </span>
-            </div>
-
-            <div className="flex-1 space-y-3.5 overflow-y-auto no-scrollbar max-h-[calc(100vh-170px)]">
-              {readyOrders.length === 0 ? (
-                <div className="flex flex-col items-center justify-center p-8 text-neutral-500 text-center">
-                  <p className="text-xs">No pending pickups</p>
-                </div>
-              ) : (
-                readyOrders.map((ord) => (
-                  <KDSTicketCard
-                    key={ord.id}
-                    order={ord}
-                    nextActionLabel="Delivered / Served"
-                    nextStatus="served"
-                    onAdvance={() => updateStatus(ord.id, "served")}
-                    accentColor="emerald"
-                  />
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-      </main>
-    </div>
-  );
-}
-
-/**
- * High contrast ticket card designed for chef readability
- */
-function KDSTicketCard({
-  order,
-  nextActionLabel,
-  nextStatus,
-  onAdvance,
-  accentColor,
-}: {
-  order: Order;
-  nextActionLabel: string;
-  nextStatus: OrderStatus;
-  onAdvance: () => void;
-  accentColor: "red" | "amber" | "blue" | "emerald";
-}) {
-  const elapsedMins = getElapsedMinutes(order.createdAt);
-  const isUrgent = elapsedMins >= 15;
-  const isCritical = elapsedMins >= 25;
-
-  return (
-    <div
-      className={`rounded-2xl border p-4 shadow-lg transition-all ${
-        isCritical
-          ? "border-red-500 bg-red-950/30 animate-pulse"
-          : isUrgent
-          ? "border-amber-500/80 bg-neutral-800/90"
-          : "border-neutral-800 bg-neutral-900"
-      }`}
-    >
-      {/* Top Card Info Bar */}
-      <div className="flex items-center justify-between pb-2.5 border-b border-neutral-800">
-        <div className="flex items-center gap-2">
-          {/* Prominent Table Number Callout */}
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white text-neutral-950 font-black text-sm shadow-md">
-            {order.tableNumber}
-          </div>
-          <div>
-            <h3 className="font-bold text-xs text-white">
-              Table {order.tableNumber}
-            </h3>
-            <span className="text-[11px] font-mono text-neutral-400">
-              #{order.orderNumber}
-            </span>
-          </div>
-        </div>
-
-        {/* Elapsed Timer */}
-        <div
-          className={`flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-black ${
-            isCritical
-              ? "bg-red-500 text-white"
-              : isUrgent
-              ? "bg-amber-500/20 text-amber-400 border border-amber-500/30"
-              : "bg-neutral-800 text-neutral-300"
-          }`}
-        >
-          <Clock className="h-3 w-3" />
-          <span>{elapsedMins}m</span>
         </div>
       </div>
 
-      {/* Customer / Note Callout */}
-      {order.specialInstructions && (
-        <div className="mt-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 p-2 text-xs text-amber-300 font-semibold">
-          Note: &ldquo;{order.specialInstructions}&rdquo;
-        </div>
-      )}
+      <div className="p-6">
+        {filter === 'active' ? (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* New/Placed Orders */}
+            <div>
+              <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                <span className="w-3 h-3 rounded-full bg-blue-500" />
+                New Orders
+                <span className="text-sm font-normal text-gray-400">({placedOrders.length})</span>
+              </h2>
 
-      {/* Items List */}
-      <div className="my-3 space-y-2 text-xs">
-        {order.items.map((item, idx) => (
-          <div
-            key={idx}
-            className="flex items-start justify-between gap-2 border-b border-neutral-800/60 pb-2 last:border-0 last:pb-0"
-          >
-            <div className="flex items-start gap-2.5">
-              {item.productImage && (
-                <div className="relative h-10 w-10 flex-shrink-0 overflow-hidden rounded-lg bg-neutral-800 border border-neutral-700/80 shadow-xs">
-                  <img
-                    src={item.productImage}
-                    alt={item.productName}
-                    className="h-full w-full object-cover"
+              <div className="space-y-4">
+                {placedOrders.map(order => (
+                  <OrderCard
+                    key={order.id}
+                    order={order}
+                    onStatusChange={updateOrderStatus}
+                    getTimeSinceOrder={getTimeSinceOrder}
                   />
-                </div>
-              )}
-              <span className="flex h-5 min-w-5 items-center justify-center rounded-md bg-neutral-800 text-amber-400 font-black text-xs">
-                {item.quantity}
-              </span>
-              <div>
-                <p className="font-bold text-white text-xs sm:text-sm leading-snug">
-                  {item.productName}
-                </p>
-
-                {/* Customizations tags */}
-                {item.customization && (
-                  <div className="mt-0.5 space-y-0.5 text-[11px]">
-                    {item.customization.selectedVariant && (
-                      <span className="inline-block rounded-md bg-neutral-800 px-1.5 py-0.2 text-neutral-300 mr-1 font-semibold">
-                        {item.customization.selectedVariant.name}
-                      </span>
-                    )}
-                    {item.customization.selectedAddons &&
-                      item.customization.selectedAddons.map((add, aIdx) => (
-                        <span
-                          key={aIdx}
-                          className="inline-block rounded-md bg-orange-950/60 text-orange-300 border border-orange-500/30 px-1.5 py-0.2 mr-1 font-bold"
-                        >
-                          +{add.name}
-                        </span>
-                      ))}
-                    {item.customization.spiceLevel !== undefined && (
-                      <span className="inline-block rounded-md bg-red-950/50 text-red-300 px-1.5 py-0.2 mr-1 font-bold">
-                        Spice Lvl: {item.customization.spiceLevel}
-                      </span>
-                    )}
-                    {item.customization.specialInstructions && (
-                      <p className="text-amber-400 italic">
-                        &ldquo;{item.customization.specialInstructions}&rdquo;
-                      </p>
-                    )}
+                ))}
+                {placedOrders.length === 0 && (
+                  <div className="text-center py-12 text-gray-500">
+                    No new orders
                   </div>
                 )}
               </div>
             </div>
 
-            <span className="text-[10px] text-neutral-500 font-medium">
-              {item.isVeg ? "VEG" : "NON-VEG"}
-            </span>
+            {/* Preparing Orders */}
+            <div>
+              <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                <span className="w-3 h-3 rounded-full bg-amber-500" />
+                Preparing
+                <span className="text-sm font-normal text-gray-400">({preparingOrders.length})</span>
+              </h2>
+
+              <div className="space-y-4">
+                {preparingOrders.map(order => (
+                  <OrderCard
+                    key={order.id}
+                    order={order}
+                    onStatusChange={updateOrderStatus}
+                    getTimeSinceOrder={getTimeSinceOrder}
+                  />
+                ))}
+                {preparingOrders.length === 0 && (
+                  <div className="text-center py-12 text-gray-500">
+                    No orders being prepared
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
-        ))}
+        ) : (
+          /* Completed Orders */
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+            {filteredOrders.map(order => (
+              <div
+                key={order.id}
+                className="bg-gray-800 rounded-xl p-4 border border-green-500/30"
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <span className="font-bold">#{order.orderNumber}</span>
+                  <span className="text-green-500 text-sm">Done</span>
+                </div>
+                <div className="text-2xl font-bold mb-1">
+                  Table {order.tableNumber}
+                </div>
+                <div className="text-gray-400 text-sm">
+                  {order.items.length} items • {getTimeSinceOrder(order.createdAt)}
+                </div>
+              </div>
+            ))}
+            {filteredOrders.length === 0 && (
+              <div className="col-span-full text-center py-12 text-gray-500">
+                No completed orders
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+interface OrderCardProps {
+  order: Order;
+  onStatusChange: (id: string, status: OrderStatus) => void;
+  getTimeSinceOrder: (createdAt: number) => string;
+}
+
+function OrderCard({ order, onStatusChange, getTimeSinceOrder }: OrderCardProps) {
+  const isUrgent = (Date.now() - order.createdAt) > 15 * 60 * 1000; // 15 mins
+
+  return (
+    <div className={`rounded-xl overflow-hidden ${
+      isUrgent ? 'bg-red-900/50 border-2 border-red-500' : 'bg-gray-800'
+    }`}>
+      {/* Header */}
+      <div className={`px-4 py-3 flex items-center justify-between ${
+        isUrgent ? 'bg-red-600' :
+        order.status === 'placed' ? 'bg-blue-600' :
+        order.status === 'accepted' ? 'bg-blue-600' :
+        order.status === 'preparing' ? 'bg-amber-600' : 'bg-green-600'
+      }`}>
+        <div>
+          <span className="font-bold text-lg">#{order.orderNumber}</span>
+          <span className="ml-3 text-sm opacity-90">Table {order.tableNumber}</span>
+        </div>
+        <div className="text-right">
+          <div className="font-bold">{getTimeSinceOrder(order.createdAt)}</div>
+          <div className="text-xs opacity-75">{formatTime(order.createdAt)}</div>
+        </div>
       </div>
 
-      {/* Big Action Button for Touch Screens */}
-      <button
-        onClick={onAdvance}
-        className={`w-full flex items-center justify-center gap-2 rounded-xl py-3 text-xs sm:text-sm font-extrabold uppercase tracking-wide transition-all active:scale-98 shadow-md ${
-          accentColor === "red"
-            ? "bg-red-600 hover:bg-red-500 text-white"
-            : accentColor === "amber"
-            ? "bg-amber-500 hover:bg-amber-400 text-neutral-950"
-            : accentColor === "blue"
-            ? "bg-blue-600 hover:bg-blue-500 text-white"
-            : "bg-emerald-600 hover:bg-emerald-500 text-white"
-        }`}
-      >
-        <span>{nextActionLabel}</span>
-        <ArrowRight className="h-4 w-4" />
-      </button>
+      {/* Items */}
+      <div className="p-4">
+        <div className="space-y-2 mb-4">
+          {order.items.map((item, idx) => (
+            <div key={idx} className="flex items-start gap-2">
+              <span className="font-bold text-amber-500 min-w-[24px]">
+                {item.quantity}x
+              </span>
+              <div className="flex-1">
+                <p className="font-medium">{item.productName}</p>
+                {item.customization?.selectedVariant && (
+                  <p className="text-sm text-gray-400">
+                    {item.customization.selectedVariant.name}
+                  </p>
+                )}
+                {item.customization?.selectedAddons && item.customization.selectedAddons.length > 0 && (
+                  <p className="text-sm text-gray-400">
+                    Add-ons: {item.customization.selectedAddons.map(a => a.name).join(', ')}
+                  </p>
+                )}
+                {item.customization?.spiceLevel && item.customization.spiceLevel > 0 && (
+                  <p className="text-xs text-red-400 mt-1">
+                    Spice: {'🌶️'.repeat(item.customization.spiceLevel)}
+                  </p>
+                )}
+                {item.customization?.specialInstructions && (
+                  <p className="text-xs text-yellow-400 mt-1 italic">
+                    Note: {item.customization.specialInstructions}
+                  </p>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Customer Instructions */}
+        {order.specialInstructions && (
+          <div className="text-sm text-yellow-400 italic p-2 bg-yellow-400/10 rounded-lg mb-4">
+            Customer: {order.specialInstructions}
+          </div>
+        )}
+
+        {/* Actions */}
+        <div className="flex gap-2">
+          {order.status === 'placed' && (
+            <button
+              onClick={() => onStatusChange(order.id, 'accepted')}
+              className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg font-medium transition-colors"
+            >
+              Accept
+            </button>
+          )}
+          {order.status === 'accepted' && (
+            <button
+              onClick={() => onStatusChange(order.id, 'preparing')}
+              className="flex-1 py-2 bg-amber-600 hover:bg-amber-700 rounded-lg font-medium transition-colors"
+            >
+              Start Preparing
+            </button>
+          )}
+          {order.status === 'preparing' && (
+            <button
+              onClick={() => onStatusChange(order.id, 'ready')}
+              className="flex-1 py-2 bg-green-600 hover:bg-green-700 rounded-lg font-medium transition-colors"
+            >
+              Mark Ready
+            </button>
+          )}
+          {order.status === 'ready' && (
+            <button
+              onClick={() => onStatusChange(order.id, 'completed')}
+              className="flex-1 py-2 bg-green-600 hover:bg-green-700 rounded-lg font-medium transition-colors"
+            >
+              Complete
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

@@ -1,107 +1,68 @@
-import { type ClassValue, clsx } from "clsx";
-import { twMerge } from "tailwind-merge";
-import { CartItem, Coupon } from "./types";
+// Utility functions
 
-export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
+export function formatCurrency(amount: number, currencySymbol = '₹'): string {
+  return `${currencySymbol}${amount.toLocaleString('en-IN', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  })}`;
 }
 
-export function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: "INR",
-    maximumFractionDigits: 0,
-  }).format(amount);
+export function formatTime(timestamp: number | string): string {
+  const date = typeof timestamp === 'number' ? new Date(timestamp) : new Date(timestamp);
+  return date.toLocaleTimeString('en-IN', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 
-export function formatTime(dateString: string): string {
-  try {
-    const d = new Date(dateString);
-    return d.toLocaleTimeString("en-IN", {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: true,
-    });
-  } catch {
-    return dateString;
-  }
+export function formatDate(timestamp: number | string): string {
+  const date = typeof timestamp === 'number' ? new Date(timestamp) : new Date(timestamp);
+  return date.toLocaleDateString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
 }
 
-export function formatDate(dateString: string): string {
-  try {
-    const d = new Date(dateString);
-    return d.toLocaleDateString("en-IN", {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-    });
-  } catch {
-    return dateString;
-  }
+export function formatRelativeTime(timestamp: number | string): string {
+  const date = typeof timestamp === 'number' ? new Date(timestamp) : new Date(timestamp);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+
+  if (diffMins < 1) return 'Just now';
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  return formatDate(timestamp);
 }
 
-export function getElapsedMinutes(dateString: string): number {
-  try {
-    const past = new Date(dateString).getTime();
-    const now = Date.now();
-    return Math.max(0, Math.floor((now - past) / 60000));
-  } catch {
-    return 0;
-  }
+export function getElapsedMinutes(timestamp: number | string): number {
+  const date = typeof timestamp === 'number' ? new Date(timestamp) : new Date(timestamp);
+  const now = new Date();
+  return Math.floor((now.getTime() - date.getTime()) / 60000);
 }
 
-export function formatRelativeTime(dateString: string): string {
-  const mins = getElapsedMinutes(dateString);
-  if (mins < 1) return "Just now";
-  if (mins === 1) return "1 min ago";
-  if (mins < 60) return `${mins} mins ago`;
-  const hours = Math.floor(mins / 60);
-  return `${hours} hr${hours > 1 ? "s" : ""} ago`;
+export function generateOrderNumber(): string {
+  const timestamp = Date.now().toString(36).toUpperCase();
+  const random = Math.random().toString(36).substring(2, 5).toUpperCase();
+  return `ORD-${timestamp}${random}`;
 }
 
-export interface PricingBreakdown {
-  subtotal: number;
-  discountAmount: number;
-  taxableAmount: number;
-  taxAmount: number; // 5% GST
-  serviceChargeAmount: number; // 5% Service Charge
-  totalAmount: number;
+export function generateTableToken(tableNumber: string): string {
+  const timestamp = Date.now().toString(36);
+  const hash = Buffer.from(`${tableNumber}-${timestamp}`).toString('base64');
+  return `tbl_${tableNumber}_${hash.replace(/[^a-zA-Z0-9]/g, '').substring(0, 8)}`;
 }
 
-export function calculateOrderPricing(
-  items: { unitPrice: number; quantity: number }[],
-  coupon: Coupon | null,
-  taxRatePercent = 5,
-  serviceChargePercent = 5,
-  isServiceChargeEnabled = true
-): PricingBreakdown {
-  const subtotal = items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
+export function slugify(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^\w\s-]/g, '')
+    .replace(/[\s_-]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
 
-  let discountAmount = 0;
-  if (coupon && coupon.isActive && subtotal >= coupon.minOrderValue) {
-    if (coupon.discountType === "percentage") {
-      discountAmount = Math.round((subtotal * coupon.discountValue) / 100);
-      if (coupon.maxDiscountAmount && discountAmount > coupon.maxDiscountAmount) {
-        discountAmount = coupon.maxDiscountAmount;
-      }
-    } else {
-      discountAmount = coupon.discountValue;
-    }
-  }
-
-  const taxableAmount = Math.max(0, subtotal - discountAmount);
-  const taxAmount = Math.round((taxableAmount * taxRatePercent) / 100);
-  const serviceChargeAmount = isServiceChargeEnabled
-    ? Math.round((taxableAmount * serviceChargePercent) / 100)
-    : 0;
-  const totalAmount = taxableAmount + taxAmount + serviceChargeAmount;
-
-  return {
-    subtotal,
-    discountAmount,
-    taxableAmount,
-    taxAmount,
-    serviceChargeAmount,
-    totalAmount,
-  };
+export function cn(...classes: (string | undefined | null | false)[]): string {
+  return classes.filter(Boolean).join(' ');
 }

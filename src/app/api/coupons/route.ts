@@ -1,49 +1,41 @@
-import { NextResponse } from "next/server";
-import { db } from "@/lib/store";
+import { NextResponse } from 'next/server';
+import { store } from '@/lib/store';
 
 export async function GET() {
   try {
-    const coupons = db.getCoupons();
+    const coupons = store.getAllCoupons().map(c => ({
+      id: c.id,
+      code: c.code,
+      description: c.description,
+      discountType: c.discountType,
+      discountValue: c.discountValue,
+      minOrderValue: c.minOrderValue,
+      maxDiscountAmount: c.maxDiscountAmount,
+      isActive: c.isActive,
+      expiryDate: c.expiryDate,
+    }));
+
     return NextResponse.json({ success: true, data: coupons });
-  } catch (err: any) {
-    return NextResponse.json(
-      { success: false, error: err.message },
-      { status: 500 }
-    );
+  } catch (error: any) {
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { code, subtotal } = body;
+    const { code } = body;
+    const coupon = store.getCoupon(code);
 
-    if (!code || typeof subtotal !== "number") {
+    if (!coupon || !coupon.isActive) {
       return NextResponse.json(
-        { success: false, error: "Coupon code and subtotal are required" },
+        { success: false, error: 'Invalid or expired coupon code' },
         { status: 400 }
       );
     }
 
-    const result = db.validateCoupon(code, subtotal);
-    if (!result.valid) {
-      return NextResponse.json(
-        { success: false, error: result.error },
-        { status: 400 }
-      );
-    }
-
-    return NextResponse.json({
-      success: true,
-      data: {
-        coupon: result.coupon,
-        discount: result.discount,
-      },
-    });
-  } catch (err: any) {
-    return NextResponse.json(
-      { success: false, error: err.message },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: true, data: coupon });
+  } catch (error: any) {
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }

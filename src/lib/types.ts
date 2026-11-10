@@ -1,3 +1,18 @@
+// Core Types for Restaurant QR Ordering System
+
+export type OrderStatus =
+  | 'placed'      // Order just placed by customer
+  | 'accepted'    // Kitchen accepted the order
+  | 'preparing'   // Currently being prepared
+  | 'ready'       // Ready for collection
+  | 'served'      // Customer collected
+  | 'completed'   // Order fully finished
+  | 'cancelled';  // Order cancelled
+
+export type PaymentStatus = 'pending' | 'processing' | 'paid' | 'failed' | 'refunded';
+
+export type PaymentMethod = 'razorpay' | 'upi' | 'card' | 'pay_at_counter';
+
 export type VegStatus = 'veg' | 'non-veg';
 
 export interface Table {
@@ -5,11 +20,9 @@ export interface Table {
   tableNumber: string;
   name: string;
   capacity: number;
-  qrToken: string;
-  qrCodeUrl?: string;
   status: 'available' | 'occupied' | 'billing';
+  qrCode: string;
   activeOrderId?: string;
-  currentBill?: number;
 }
 
 export interface Category {
@@ -20,18 +33,18 @@ export interface Category {
   image: string;
   displayOrder: number;
   isActive: boolean;
-  itemCount?: number;
+  itemCount: number;
 }
 
 export interface ProductVariant {
   id: string;
-  name: string; // e.g. "Regular", "Medium", "Large"
+  name: string;
   price: number;
 }
 
 export interface ProductAddon {
   id: string;
-  name: string; // e.g. "Extra Truffle Cheese", "Avocado Dip"
+  name: string;
   price: number;
   isVeg: boolean;
 }
@@ -42,16 +55,16 @@ export interface Product {
   categoryName?: string;
   name: string;
   description: string;
-  price: number; // Base price in INR
+  price: number;
   originalPrice?: number;
   image: string;
   isVeg: boolean;
   isBestseller: boolean;
   isChefSpecial: boolean;
-  isAvailable: boolean; // Out of stock toggle
+  isAvailable: boolean;
   preparationTimeMinutes: number;
-  spiceLevel: 0 | 1 | 2 | 3; // 0=None, 1=Mild, 2=Medium, 3=Fiery
-  portionSize: string; // e.g. "Serves 1-2", "350g", "4 pcs"
+  spiceLevel: 0 | 1 | 2 | 3;
+  portionSize: string;
   ingredients: string[];
   variants?: ProductVariant[];
   addons?: ProductAddon[];
@@ -65,28 +78,14 @@ export interface CartCustomization {
 }
 
 export interface CartItem {
-  id: string; // generated unique cart item id (considers customizations)
+  id: string;
   productId: string;
   product: Product;
   quantity: number;
   customization: CartCustomization;
-  itemUnitPrice: number; // base + variant + addons
+  itemUnitPrice: number;
   totalPrice: number;
 }
-
-export type OrderStatus =
-  | 'placed'
-  | 'accepted'
-  | 'preparing'
-  | 'ready'
-  | 'served'
-  | 'completed'
-  | 'rejected'
-  | 'cancelled';
-
-export type PaymentStatus = 'pending' | 'paid' | 'failed' | 'refunded';
-
-export type PaymentMethod = 'razorpay' | 'pay_at_counter' | 'upi';
 
 export interface OrderItem {
   id: string;
@@ -102,7 +101,7 @@ export interface OrderItem {
 
 export interface Order {
   id: string;
-  orderNumber: string; // e.g. "UP-1042"
+  orderNumber: string;
   restaurantId: string;
   tableId: string;
   tableNumber: string;
@@ -112,8 +111,8 @@ export interface Order {
   subtotal: number;
   discountAmount: number;
   couponCode?: string;
-  taxAmount: number; // 5% GST
-  serviceChargeAmount: number; // 5% Service Charge
+  taxAmount: number;
+  serviceChargeAmount: number;
   totalAmount: number;
   paymentMethod: PaymentMethod;
   paymentStatus: PaymentStatus;
@@ -122,10 +121,12 @@ export interface Order {
   status: OrderStatus;
   rejectionReason?: string;
   specialInstructions?: string;
-  createdAt: string; // ISO string
-  updatedAt: string;
+  createdAt: number;
+  updatedAt: number;
   estimatedPrepMinutes: number;
-  estimatedReadyTime: string; // ISO string
+  estimatedReadyTime?: number;
+  readyAt?: number;
+  completedAt?: number;
 }
 
 export interface Coupon {
@@ -133,7 +134,7 @@ export interface Coupon {
   code: string;
   description: string;
   discountType: 'percentage' | 'fixed';
-  discountValue: number; // e.g. 15 for 15% or 150 for ₹150
+  discountValue: number;
   minOrderValue: number;
   maxDiscountAmount?: number;
   isActive: boolean;
@@ -157,8 +158,8 @@ export interface RestaurantSettings {
   isRestaurantOpen: boolean;
   currency: string;
   currencySymbol: string;
-  taxRatePercent: number; // e.g. 5
-  serviceChargePercent: number; // e.g. 5
+  taxRatePercent: number;
+  serviceChargePercent: number;
   isServiceChargeEnabled: boolean;
   allowPayAtCounter: boolean;
   allowOnlinePayment: boolean;
@@ -176,23 +177,6 @@ export interface DashboardAnalytics {
   averageOrderValue: number;
   salesGrowthPercent: number;
   ordersGrowthPercent: number;
-  bestsellers: {
-    productId: string;
-    productName: string;
-    category: string;
-    count: number;
-    revenue: number;
-    image: string;
-  }[];
-  hourlySales: {
-    hour: string;
-    sales: number;
-    orders: number;
-  }[];
-  recentOrders: Order[];
-  categoryBreakdown: {
-    category: string;
-    sales: number;
-    percentage: number;
-  }[];
+  hourlySales: { hour: string; sales: number; orders: number }[];
+  categoryBreakdown: { category: string; sales: number; percentage: number }[];
 }
