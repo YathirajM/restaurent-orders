@@ -1,0 +1,104 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-display: "Fraunces", ui-serif, Georgia, serif;
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+html {
+  -webkit-tap-highlight-color: transparent;
+  scroll-behavior: smooth;
+}
+
+body {
+  @apply bg-cream text-ink-900 antialiased;
+  font-family: var(--font-sans);
+  overscroll-behavior-y: none;
+}
+
+/* Dark mode applies to KDS explicitly via .dark class on html */
+.dark body {
+  @apply bg-ink-950 text-ink-100;
+}
+
+/* ---------- Shared primitives ---------- */
+
+.btn-primary {
+  @apply inline-flex items-center justify-center gap-2 rounded-xl bg-ember-500 px-5 py-3
+    text-sm font-semibold text-white shadow-btn transition-all duration-150
+    active:scale-[0.97] hover:bg-ember-600
+    disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100;
+}
+
+.btn-secondary {
+  @apply inline-flex items-center justify-center gap-2 rounded-xl border border-ink-200
+    bg-white px-5 py-3 text-sm font-semibold text-ink-800 shadow-btn transition-all
+    duration-150 active:scale-[0.97] hover:bg-ink-50
+    disabled:cursor-not-allowed disabled:opacity-50;
+}
+
+.btn-ghost {
+  @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm
+    font-semibold text-ink-700 transition-colors hover:bg-ink-100 active:scale-[0.97];
+}
+
+.card {
+  @apply rounded-2xl border border-ink-100 bg-white shadow-card;
+}
+
+.input {
+  @apply w-full rounded-xl border border-ink-200 bg-white px-4 py-3 text-base text-ink-900
+    placeholder:text-ink-400 outline-none transition-all
+    focus:border-ember-400 focus:ring-4 focus:ring-ember-500/10;
+}
+
+.label {
+  @apply mb-1.5 block text-sm font-semibold text-ink-700;
+}
+
+.skeleton {
+  @apply animate-shimmer rounded-xl;
+  background: linear-gradient(
+    90deg,
+    theme("colors.ink.100") 25%,
+    theme("colors.ink.50") 50%,
+    theme("colors.ink.100") 75%
+  );
+  background-size: 800px 100%;
+}
+
+/* Veg / non-veg indicator squares (Indian FSSAI convention) */
+.veg-indicator {
+  @apply inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-[3px] border;
+}
+.veg-indicator.veg {
+  @apply border-sage-600;
+}
+.veg-indicator.veg::after {
+  content: "";
+  @apply h-2 w-2 rounded-full bg-sage-600;
+}
+.veg-indicator.nonveg {
+  @apply border-chili-600;
+}
+.veg-indicator.nonveg::after {
+  content: "";
+  @apply h-0 w-0 border-l-[4px] border-r-[4px] border-b-[7px]
+    border-l-transparent border-r-transparent border-b-chili-600;
+}
+
+/* Hide scrollbar for horizontal category rails */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Sticky safe area for phones */
+.pb-safe {
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 0.5rem);
+}

@@ -1,89 +1,148 @@
 import type { Config } from "tailwindcss";
 
+/**
+ * Saffron & Slate — premium restaurant ordering identity.
+ *
+ * Design tokens:
+ * - ink:    near-black warm slate for text and surfaces (avoid pure #000)
+ * - ember:  deep terracotta-saffron brand color (CTAs, accents)
+ * - saffron: bright warm accent for badges/highlights, used sparingly
+ * - cream:  warm paper background for the customer app
+ * - sage:   success/veg indicator family
+ * - chili:  destructive / non-veg indicator
+ *
+ * The palette is warm, food-adjacent, and deliberately NOT the generic
+ * blue/purple AI look. Dark mode is supported for the KDS (kitchens run dim).
+ */
 const config: Config = {
-  darkMode: ["class"],
   content: [
-    "./src/pages/**/*.{js,ts,jsx,tsx,mdx}",
-    "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
-    "./src/app/**/*.{js,ts,jsx,tsx,mdx}",
+    "./app/**/*.{ts,tsx}",
+    "./components/**/*.{ts,tsx}",
+    "./lib/**/*.{ts,tsx}",
   ],
   theme: {
     extend: {
       colors: {
-        border: "hsl(var(--border))",
-        input: "hsl(var(--input))",
-        ring: "hsl(var(--ring))",
-        background: "hsl(var(--background))",
-        foreground: "hsl(var(--foreground))",
-        primary: {
-          DEFAULT: "hsl(var(--primary))",
-          foreground: "hsl(var(--primary-foreground))",
-          50: "#fffbeb",
-          100: "#fef3c7",
-          200: "#fde68a",
-          300: "#fcd34d",
-          400: "#fbbf24",
-          500: "#f59e0b",
-          600: "#d97706",
-          700: "#b45309",
-          800: "#92400e",
-          900: "#78350f",
+        ink: {
+          50: "#f7f6f4",
+          100: "#edeae5",
+          200: "#d9d4cc",
+          300: "#b8afa3",
+          400: "#8f8577",
+          500: "#6f665a",
+          600: "#584f45",
+          700: "#463e36",
+          800: "#302a24",
+          900: "#1e1a16",
+          950: "#14110e",
         },
-        secondary: {
-          DEFAULT: "hsl(var(--secondary))",
-          foreground: "hsl(var(--secondary-foreground))",
+        ember: {
+          50: "#fdf3ef",
+          100: "#fbe3d9",
+          200: "#f6c5b1",
+          300: "#ef9d7f",
+          400: "#e6714c",
+          500: "#d94f28",
+          600: "#c43f1c",
+          700: "#a33117",
+          800: "#832a16",
+          900: "#6b2616",
+          950: "#3a110a",
         },
-        muted: {
-          DEFAULT: "hsl(var(--muted))",
-          foreground: "hsl(var(--muted-foreground))",
+        saffron: {
+          50: "#fffaeb",
+          100: "#fef0c7",
+          200: "#fedf89",
+          300: "#fec84b",
+          400: "#fdb022",
+          500: "#f79009",
+          600: "#dc6803",
+          700: "#b54708",
+          800: "#93370d",
+          900: "#7a2e0e",
+          950: "#4a1c08",
         },
-        accent: {
-          DEFAULT: "hsl(var(--accent))",
-          foreground: "hsl(var(--accent-foreground))",
+        cream: {
+          DEFAULT: "#faf7f2",
+          dark: "#f3eee6",
         },
-        destructive: {
-          DEFAULT: "hsl(var(--destructive))",
-          foreground: "hsl(var(--destructive-foreground))",
+        sage: {
+          50: "#f0f9f0",
+          100: "#dcf1dc",
+          200: "#bbe3bc",
+          300: "#8ecf90",
+          400: "#5cb461",
+          500: "#3a9a42",
+          600: "#2a7d33",
+          700: "#24642c",
+          800: "#215027",
+          900: "#1d4223",
+          950: "#0c2411",
         },
-        card: {
-          DEFAULT: "hsl(var(--card))",
-          foreground: "hsl(var(--card-foreground))",
+        chili: {
+          50: "#fef2f1",
+          100: "#fee4e2",
+          200: "#fecdca",
+          300: "#fda29b",
+          400: "#f97066",
+          500: "#f04438",
+          600: "#d92d20",
+          700: "#b42318",
+          800: "#912018",
+          900: "#7a271a",
+          950: "#45120c",
         },
-        gold: {
-          50: "#fbf8ee",
-          100: "#f5edd2",
-          200: "#ebdaa7",
-          300: "#dec076",
-          400: "#d1a54c",
-          500: "#c28e34",
-          600: "#a9722a",
-          700: "#865424",
-          800: "#6e4423",
-          900: "#5d3920",
-        },
-      },
-      borderRadius: {
-        lg: "var(--radius)",
-        md: "calc(var(--radius) - 2px)",
-        sm: "calc(var(--radius) - 4px)",
       },
       fontFamily: {
-        sans: ["var(--font-geist-sans)", "Inter", "sans-serif"],
-        display: ["var(--font-serif)", "Playfair Display", "Georgia", "serif"],
+        display: ["var(--font-display)", "Georgia", "serif"],
+        sans: [
+          "var(--font-sans)",
+          "-apple-system",
+          "BlinkMacSystemFont",
+          "Segoe UI",
+          "sans-serif",
+        ],
+      },
+      borderRadius: {
+        xl: "0.875rem",
+        "2xl": "1.25rem",
+        "3xl": "1.75rem",
+      },
+      boxShadow: {
+        card: "0 1px 2px rgba(30,26,22,0.06), 0 1px 3px rgba(30,26,22,0.08)",
+        lift: "0 4px 12px rgba(30,26,22,0.10), 0 2px 4px rgba(30,26,22,0.06)",
+        sheet: "0 -8px 30px rgba(30,26,22,0.18)",
+        btn: "0 1px 2px rgba(30,26,22,0.12)",
       },
       keyframes: {
-        "pulse-subtle": {
-          "0%, 100%": { opacity: "1" },
-          "50%": { opacity: "0.8" },
+        "sheet-up": {
+          from: { transform: "translateY(100%)" },
+          to: { transform: "translateY(0)" },
         },
-        "slide-up": {
-          "0%": { transform: "translateY(100%)", opacity: "0" },
-          "100%": { transform: "translateY(0)", opacity: "1" },
+        "fade-in": {
+          from: { opacity: "0" },
+          to: { opacity: "1" },
+        },
+        "pop-in": {
+          "0%": { transform: "scale(0.6)", opacity: "0" },
+          "70%": { transform: "scale(1.08)" },
+          "100%": { transform: "scale(1)", opacity: "1" },
+        },
+        pulse: {
+          "0%, 100%": { opacity: "1" },
+          "50%": { opacity: "0.45" },
+        },
+        shimmer: {
+          "0%": { backgroundPosition: "-400px 0" },
+          "100%": { backgroundPosition: "400px 0" },
         },
       },
       animation: {
-        "pulse-subtle": "pulse-subtle 3s ease-in-out infinite",
-        "slide-up": "slide-up 0.3s ease-out forwards",
+        "sheet-up": "sheet-up 0.28s cubic-bezier(0.32,0.72,0,1)",
+        "fade-in": "fade-in 0.2s ease-out",
+        "pop-in": "pop-in 0.3s cubic-bezier(0.32,0.72,0,1)",
+        pulse: "pulse 1.8s ease-in-out infinite",
+        shimmer: "shimmer 1.6s linear infinite",
       },
     },
   },
